@@ -592,6 +592,18 @@ class D3D12HelloTexture : public DXSample
         ImGui,
     };
 
+    enum class PassConstantsKey
+    {
+        ToneMap,
+        GBufferDebugTarget,
+    };
+
+    struct PassConstantsBinding
+    {
+        UINT rootParameterIndex;
+        PassConstantsKey constants;
+    };
+
     struct RenderPass
     {
         const wchar_t *name;
@@ -601,6 +613,7 @@ class D3D12HelloTexture : public DXSample
         std::vector<PassDescriptorBinding> descriptorBindings;
         PassRenderTargetBinding renderTargets;
         PassOperation operation;
+        std::vector<PassConstantsBinding> constantsBindings;
 
         template <typename Func> void ForEachResourceUsage(Func func) const
         {

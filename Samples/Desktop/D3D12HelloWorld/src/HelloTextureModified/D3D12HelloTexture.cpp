@@ -2060,7 +2060,7 @@ void D3D12HelloTexture::BuildRenderPasses()
     AddPass(MakeClearPass());
     AddPass(MakeDepthPrePass());
     AddPass(MakeGBufferPass());
-#if 0
+#if 1
     AddPass({L"MainPass",
              PipelineKey::Main,
              MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
@@ -2071,7 +2071,7 @@ void D3D12HelloTexture::BuildRenderPasses()
               {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
              {{RtvKey::BackBuffer}, DsvKey::Depth},
              PassOperation::Main});
-#endif
+#else
 
     if (m_lightingPassDebugGradientEnabled)
     {
@@ -2092,7 +2092,7 @@ void D3D12HelloTexture::BuildRenderPasses()
     {
         AddPass(MakeGBufferDebugPass());
     }
-
+#endif
     AddPass({L"ImGui",
              PipelineKey::None,
              {},
@@ -2194,7 +2194,8 @@ auto D3D12HelloTexture::MakeLightingDebugGradientPass() const -> RenderPass
              {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
              {RootParam_LightConstants, DescriptorKey::LightCbv}},
             {{RtvKey::LightPass}, std::nullopt},
-            PassOperation::LightingDebugGradient};
+            PassOperation::LightingDebugGradient,
+            {{RootParam_ToneMapConstants, PassConstantsKey::ToneMap}}};
 }
 
 auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
@@ -2205,7 +2206,8 @@ auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_ToneMapSceneColor, DescriptorKey::ToneMapSceneColorSrv}},
             {{RtvKey::BackBuffer}, std::nullopt},
-            PassOperation::ToneMap};
+            PassOperation::ToneMap,
+            {{RootParam_ToneMapConstants, PassConstantsKey::ToneMap}}};
 }
 
 auto D3D12HelloTexture::MakeDebugDumpPass() const -> RenderPass
@@ -2222,11 +2224,14 @@ auto D3D12HelloTexture::MakeDebugDumpPass() const -> RenderPass
 
 auto D3D12HelloTexture::MakeGBufferDebugPass() const -> RenderPass
 {
-    return {
-        L"GBufferDebugPass",        PipelineKey::GBufferDebug,
-        MakeGBufferReadUsages(),    MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-        MakeGBufferSrvBindings(),   {{RtvKey::BackBuffer}, std::nullopt},
-        PassOperation::GBufferDebug};
+    return {L"GBufferDebugPass",
+            PipelineKey::GBufferDebug,
+            MakeGBufferReadUsages(),
+            MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            MakeGBufferSrvBindings(),
+            {{RtvKey::BackBuffer}, std::nullopt},
+            PassOperation::GBufferDebug,
+            {{RootParam_GBufferDebugConstants, PassConstantsKey::GBufferDebugTarget}}};
 }
 
 void D3D12HelloTexture::AnalyzeResourceLifetimes() { m_resourceRegistry.AnalyzeLifetimes(m_renderPasses); }
@@ -2287,23 +2292,26 @@ void D3D12HelloTexture::BindPassPipeline(const RenderPass &pass)
 
 void D3D12HelloTexture::BindPassConstants(const RenderPass &pass)
 {
-    switch (pass.operation)
+    for (const auto &binding : pass.constantsBindings)
     {
-    case PassOperation::LightingDebugGradient:
-    case PassOperation::ToneMap:
-    {
-        const auto constants = m_toneMapPass.MakeShaderConstants(m_hdrOutputPolicy.settings);
-        m_commandList->SetGraphicsRoot32BitConstants(RootParam_ToneMapConstants, 5, &constants, 0);
-        break;
-    }
-    case PassOperation::GBufferDebug:
-    {
-        const UINT debugTarget = m_debugViewSettings.GetGBufferDebugTarget();
-        m_commandList->SetGraphicsRoot32BitConstants(RootParam_GBufferDebugConstants, 1, &debugTarget, 0);
-        break;
-    }
-    default:
-        break;
+        switch (binding.constants)
+        {
+        case PassConstantsKey::ToneMap:
+        {
+            const auto constants = m_toneMapPass.MakeShaderConstants(m_hdrOutputPolicy.settings);
+            m_commandList->SetGraphicsRoot32BitConstants(binding.rootParameterIndex, 5, &constants, 0);
+            break;
+        }
+        case PassConstantsKey::GBufferDebugTarget:
+        {
+            const UINT debugTarget = m_debugViewSettings.GetGBufferDebugTarget();
+            m_commandList->SetGraphicsRoot32BitConstants(binding.rootParameterIndex, 1, &debugTarget, 0);
+            break;
+        }
+        default:
+            assert(false && "Unsupported pass constants binding.");
+            break;
+        }
     }
 }
 
