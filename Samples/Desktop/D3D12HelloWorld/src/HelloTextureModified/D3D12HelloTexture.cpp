@@ -91,21 +91,6 @@ auto D3D12HelloTexture::ToneMapPass::MakeShaderConstants(const HdrOutputSettings
     return settings.MakeShaderConstants(hdrOutputSettings.TransferFunction());
 }
 
-void D3D12HelloTexture::ToneMapPass::SetConstants(ID3D12GraphicsCommandList *commandList,
-                                                  const HdrOutputSettings &hdrOutputSettings) const
-{
-    const auto constants = MakeShaderConstants(hdrOutputSettings);
-    commandList->SetGraphicsRoot32BitConstants(RootParam_ToneMapConstants, 5, &constants, 0);
-}
-
-void D3D12HelloTexture::ToneMapPass::Record(ID3D12GraphicsCommandList *commandList,
-                                            const HdrOutputSettings &hdrOutputSettings) const
-{
-    SetConstants(commandList, hdrOutputSettings);
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    commandList->DrawInstanced(3, 1, 0, 0);
-}
-
 void D3D12HelloTexture::PipelineRegistry::Create(ID3D12Device *device, PipelineKey key,
                                                  const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc)
 {
@@ -2300,6 +2285,28 @@ void D3D12HelloTexture::BindPassPipeline(const RenderPass &pass)
     }
 }
 
+void D3D12HelloTexture::BindPassConstants(const RenderPass &pass)
+{
+    switch (pass.operation)
+    {
+    case PassOperation::LightingDebugGradient:
+    case PassOperation::ToneMap:
+    {
+        const auto constants = m_toneMapPass.MakeShaderConstants(m_hdrOutputPolicy.settings);
+        m_commandList->SetGraphicsRoot32BitConstants(RootParam_ToneMapConstants, 5, &constants, 0);
+        break;
+    }
+    case PassOperation::GBufferDebug:
+    {
+        const UINT debugTarget = m_debugViewSettings.GetGBufferDebugTarget();
+        m_commandList->SetGraphicsRoot32BitConstants(RootParam_GBufferDebugConstants, 1, &debugTarget, 0);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 void D3D12HelloTexture::ExecutePasses()
 {
     for (int passIndex = 0; passIndex < static_cast<int>(m_renderPasses.size()); ++passIndex)
@@ -2317,6 +2324,7 @@ void D3D12HelloTexture::ExecutePass(int passIndex)
     BindPassRenderTargets(pass);
     BindPassDescriptors(pass);
     BindPassPipeline(pass);
+    BindPassConstants(pass);
     ExecutePassOperation(pass);
 
     ReleaseResourcesAfterPass(passIndex);
@@ -2620,8 +2628,6 @@ void D3D12HelloTexture::RecordGBufferDebugPass()
 {
     PIXBeginEvent(m_commandList.Get(), 0, L"GBufferDebugPass");
 
-    const UINT debugTarget = m_debugViewSettings.GetGBufferDebugTarget();
-    m_commandList->SetGraphicsRoot32BitConstants(RootParam_GBufferDebugConstants, 1, &debugTarget, 0);
     DrawFullscreenTriangle();
 
     PIXEndEvent(m_commandList.Get());
@@ -2632,8 +2638,6 @@ void D3D12HelloTexture::RecordGBufferDebugPass()
 void D3D12HelloTexture::RecordLightPassDebugGradient()
 {
     PIXBeginEvent(m_commandList.Get(), 0, L"RecordLightPassDebugGradient");
-
-    m_toneMapPass.SetConstants(m_commandList.Get(), m_hdrOutputPolicy.settings);
 
     DrawFullscreenTriangle();
 
@@ -2657,7 +2661,7 @@ void D3D12HelloTexture::RecordToneMapPass()
 {
     PIXBeginEvent(m_commandList.Get(), 0, L"ToneMapPass");
 
-    m_toneMapPass.Record(m_commandList.Get(), m_hdrOutputPolicy.settings);
+    DrawFullscreenTriangle();
 
     PIXEndEvent(m_commandList.Get());
 

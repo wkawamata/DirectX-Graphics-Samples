@@ -269,8 +269,6 @@ class D3D12HelloTexture : public DXSample
         ToneMapSettings settings;
 
         ToneMapSettings::ShaderConstants MakeShaderConstants(const HdrOutputSettings &hdrOutputSettings) const;
-        void SetConstants(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
-        void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
     };
 
     struct ConstantBufferResource
@@ -708,6 +706,7 @@ class D3D12HelloTexture : public DXSample
     void BindPassRenderTargets(const RenderPass &pass);
     void BindPassDescriptors(const RenderPass &pass);
     void BindPassPipeline(const RenderPass &pass);
+    void BindPassConstants(const RenderPass &pass);
     ID3D12PipelineState *GetPipelineState(PipelineKey pipeline) const;
     void TransitionPassResources(const RenderPass &pass);
     void TransitionResource(const ResourceUsage &usage);
