@@ -83,6 +83,7 @@ D3D12HelloTexture::D3D12HelloTexture(UINT width, UINT height, std::wstring name)
       m_scissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height)), m_rtvDescriptorSize(0),
       m_descriptorSize(0)
 {
+    RegisterPassOperationHandlers();
 }
 
 auto D3D12HelloTexture::ToneMapPass::MakeShaderConstants(const HdrOutputSettings &hdrOutputSettings) const
@@ -2381,43 +2382,29 @@ void D3D12HelloTexture::ExecutePass(int passIndex)
     ReleaseResourcesAfterPass(passIndex);
 }
 
+void D3D12HelloTexture::RegisterPassOperationHandlers()
+{
+    m_passOperationHandlers = {
+        {PassOperation::Clear, &D3D12HelloTexture::ExecuteClearPass},
+        {PassOperation::DepthPrePass, &D3D12HelloTexture::ExecuteDepthPrePass},
+        {PassOperation::GBuffer, &D3D12HelloTexture::ExecuteGBufferPass},
+        {PassOperation::Main, &D3D12HelloTexture::ExecuteMainPass},
+        {PassOperation::Lighting, &D3D12HelloTexture::ExecuteLightingPass},
+        {PassOperation::LightingDebugGradient, &D3D12HelloTexture::ExecuteLightingDebugGradientPass},
+        {PassOperation::ToneMap, &D3D12HelloTexture::ExecuteToneMapPass},
+        {PassOperation::DebugDump, &D3D12HelloTexture::ExecuteDebugDumpPass},
+        {PassOperation::GBufferDebug, &D3D12HelloTexture::ExecuteGBufferDebugPass},
+        {PassOperation::ImGui, &D3D12HelloTexture::ExecuteImGuiPass},
+    };
+}
+
 void D3D12HelloTexture::ExecutePassOperation(const RenderPass &pass)
 {
-    switch (pass.operation)
+    auto handler = m_passOperationHandlers.find(pass.operation);
+    assert(handler != m_passOperationHandlers.end() && "Unsupported pass operation.");
+    if (handler != m_passOperationHandlers.end())
     {
-    case PassOperation::Clear:
-        RecordClear(pass.renderTargets);
-        break;
-    case PassOperation::DepthPrePass:
-        RecordDepthPrePass();
-        break;
-    case PassOperation::GBuffer:
-        RecordGBufferPass(pass.renderTargets);
-        break;
-    case PassOperation::Main:
-        RecordMainPass(pass.renderTargets);
-        break;
-    case PassOperation::Lighting:
-        RecordLightPass();
-        break;
-    case PassOperation::LightingDebugGradient:
-        RecordLightPassDebugGradient();
-        break;
-    case PassOperation::ToneMap:
-        RecordToneMapPass();
-        break;
-    case PassOperation::DebugDump:
-        RecordDebugDumpPass();
-        break;
-    case PassOperation::GBufferDebug:
-        RecordGBufferDebugPass();
-        break;
-    case PassOperation::ImGui:
-        RecordImGuiPass();
-        break;
-    default:
-        assert(false && "Unsupported pass operation.");
-        break;
+        (this->*handler->second)(pass);
     }
 }
 
@@ -2603,6 +2590,26 @@ void D3D12HelloTexture::BeginFrame()
 
     m_gpuWorkMeter.StartGpu(m_commandList.Get(), m_frameResources[m_frameIndex].gpuWorkMeterCheckPoints);
 }
+
+void D3D12HelloTexture::ExecuteClearPass(const RenderPass &pass) { RecordClear(pass.renderTargets); }
+
+void D3D12HelloTexture::ExecuteDepthPrePass(const RenderPass &pass) { RecordDepthPrePass(); }
+
+void D3D12HelloTexture::ExecuteGBufferPass(const RenderPass &pass) { RecordGBufferPass(pass.renderTargets); }
+
+void D3D12HelloTexture::ExecuteMainPass(const RenderPass &pass) { RecordMainPass(pass.renderTargets); }
+
+void D3D12HelloTexture::ExecuteLightingPass(const RenderPass &pass) { RecordLightPass(); }
+
+void D3D12HelloTexture::ExecuteLightingDebugGradientPass(const RenderPass &pass) { RecordLightPassDebugGradient(); }
+
+void D3D12HelloTexture::ExecuteToneMapPass(const RenderPass &pass) { RecordToneMapPass(); }
+
+void D3D12HelloTexture::ExecuteDebugDumpPass(const RenderPass &pass) { RecordDebugDumpPass(); }
+
+void D3D12HelloTexture::ExecuteGBufferDebugPass(const RenderPass &pass) { RecordGBufferDebugPass(); }
+
+void D3D12HelloTexture::ExecuteImGuiPass(const RenderPass &pass) { RecordImGuiPass(); }
 
 void D3D12HelloTexture::RecordClear(const PassRenderTargetBinding &renderTargets)
 {

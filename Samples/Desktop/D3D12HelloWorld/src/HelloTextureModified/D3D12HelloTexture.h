@@ -665,6 +665,8 @@ class D3D12HelloTexture : public DXSample
 
     std::vector<RenderPass> m_renderPasses;
     ResourceRegistry m_resourceRegistry;
+    using PassOperationHandler = void (D3D12HelloTexture::*)(const RenderPass &pass);
+    std::unordered_map<PassOperation, PassOperationHandler> m_passOperationHandlers;
 
     void LoadPipeline();
     void LoadAssets();
@@ -710,6 +712,7 @@ class D3D12HelloTexture : public DXSample
     void ExecutePasses();
     void ExecutePass(int passIndex);
     void ExecutePassOperation(const RenderPass &pass);
+    void RegisterPassOperationHandlers();
     void CreateResourcesForPass(int passIndex);
     void CreateCommittedTransientResource(TransientResource &resource);
     void BindCreatedTransientResource(const std::string &name, ID3D12Resource *resource);
@@ -745,6 +748,16 @@ class D3D12HelloTexture : public DXSample
     UINT GetVisibleCubeCount() const;
 
     void BeginFrame();
+    void ExecuteClearPass(const RenderPass &pass);
+    void ExecuteDepthPrePass(const RenderPass &pass);
+    void ExecuteGBufferPass(const RenderPass &pass);
+    void ExecuteMainPass(const RenderPass &pass);
+    void ExecuteLightingPass(const RenderPass &pass);
+    void ExecuteLightingDebugGradientPass(const RenderPass &pass);
+    void ExecuteToneMapPass(const RenderPass &pass);
+    void ExecuteDebugDumpPass(const RenderPass &pass);
+    void ExecuteGBufferDebugPass(const RenderPass &pass);
+    void ExecuteImGuiPass(const RenderPass &pass);
     void RecordClear(const PassRenderTargetBinding &renderTargets);
     void RecordDepthPrePass();
     void RecordGBufferPass(const PassRenderTargetBinding &renderTargets);
