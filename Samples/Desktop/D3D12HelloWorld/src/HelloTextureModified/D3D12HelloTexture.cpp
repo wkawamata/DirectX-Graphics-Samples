@@ -2008,12 +2008,12 @@ void D3D12HelloTexture::BuildRenderPasses()
     m_renderPasses.clear();
 
     AddPass(L"Clear", PipelineKey::None, {},
-            MakeResourceUsageMap(
+            MakeResourceUsages(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET},
                  {kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             {}, {{GetBackBufferRtv()}, GetDepthDsv(), m_backBufferClearColor}, PassOperation::Clear);
     AddPass(L"Depth PrePass", PipelineKey::DepthPrePass, {},
-            MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
+            MakeResourceUsages({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             {
                 {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
                 {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv},
@@ -2021,8 +2021,8 @@ void D3D12HelloTexture::BuildRenderPasses()
             {{}, GetDepthDsv()}, PassOperation::DepthPrePass);
     AddPass(
         L"GBufferPass", PipelineKey::GBuffer,
-        MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-        MakeResourceUsageMap({{kGBufferResourceNames[GBuffer::Albedo], m_gbuffer.resources[GBuffer::Albedo].Get(),
+        MakeResourceUsages({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
+        MakeResourceUsages({{kGBufferResourceNames[GBuffer::Albedo], m_gbuffer.resources[GBuffer::Albedo].Get(),
                                D3D12_RESOURCE_STATE_RENDER_TARGET},
                               {kGBufferResourceNames[GBuffer::Normal], m_gbuffer.resources[GBuffer::Normal].Get(),
                                D3D12_RESOURCE_STATE_RENDER_TARGET},
@@ -2042,8 +2042,8 @@ void D3D12HelloTexture::BuildRenderPasses()
         PassOperation::GBuffer);
 #if 0
     AddPass(L"MainPass", PipelineKey::Main,
-            MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-            MakeResourceUsageMap(
+            MakeResourceUsages({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
+            MakeResourceUsages(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_TextureTable, m_textureTableStart},
              {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
@@ -2053,8 +2053,8 @@ void D3D12HelloTexture::BuildRenderPasses()
 #endif
     AddPass(L"LightPass",
             m_lightingPass.debugGradientEnabled ? PipelineKey::LightingDebugGradient : PipelineKey::Lighting,
-            MakeGBufferReadUsageMap(),
-            MakeResourceUsageMap({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
+            MakeGBufferReadUsages(),
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
                                    D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_GBufferSrvBase, m_gbuffer.srvHandles[GBuffer::Albedo]},
              {RootParam_MaterialSrv, m_materialBufferSrv},
@@ -2063,9 +2063,9 @@ void D3D12HelloTexture::BuildRenderPasses()
             {{GetLightPassRTV()}, std::nullopt}, PassOperation::Lighting);
 
     AddPass(L"ToneMapPass", PipelineKey::ToneMap,
-            MakeResourceUsageMap({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
                                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}}),
-            MakeResourceUsageMap(
+            MakeResourceUsages(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_ToneMapSceneColor, m_toneMapPass.sceneColorSrv}}, {{GetBackBufferRtv()}, std::nullopt},
             PassOperation::ToneMap);
@@ -2074,7 +2074,7 @@ void D3D12HelloTexture::BuildRenderPasses()
     {
         AddPass(
             L"DebugDump", PipelineKey::None,
-            MakeResourceUsageMap(
+            MakeResourceUsages(
                 {{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE},
                  {kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE}}),
             {}, {}, {{}, std::nullopt}, PassOperation::DebugDump);
@@ -2082,40 +2082,34 @@ void D3D12HelloTexture::BuildRenderPasses()
 
     if (m_debugViewSettings.IsGBufferDebugView())
     {
-        AddPass(L"GBufferDebugPass", PipelineKey::GBufferDebug, MakeGBufferReadUsageMap(),
-                MakeResourceUsageMap({{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(),
+        AddPass(L"GBufferDebugPass", PipelineKey::GBufferDebug, MakeGBufferReadUsages(),
+                MakeResourceUsages({{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(),
                                        D3D12_RESOURCE_STATE_RENDER_TARGET}}),
                 MakeGBufferSrvBindings(), {{GetBackBufferRtv()}, std::nullopt}, PassOperation::GBufferDebug);
     }
 
     AddPass(L"ImGui", PipelineKey::None, {},
-            MakeResourceUsageMap(
+            MakeResourceUsages(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {}, {{GetBackBufferRtv()}, std::nullopt}, PassOperation::ImGui);
 }
 
-void D3D12HelloTexture::AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsageMap reads,
-                                ResourceUsageMap writes, std::vector<PassDescriptorBinding> descriptorBindings,
+void D3D12HelloTexture::AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsages reads,
+                                ResourceUsages writes, std::vector<PassDescriptorBinding> descriptorBindings,
                                 PassRenderTargetBinding renderTargets, PassOperation operation)
 {
     m_renderPasses.push_back({name, pipeline, std::move(reads), std::move(writes), std::move(descriptorBindings),
                               std::move(renderTargets), operation});
 }
 
-auto D3D12HelloTexture::MakeResourceUsageMap(std::initializer_list<ResourceUsage> usages) const -> ResourceUsageMap
+auto D3D12HelloTexture::MakeResourceUsages(std::initializer_list<ResourceUsage> usages) const -> ResourceUsages
 {
-    ResourceUsageMap usageMap;
-    for (const ResourceUsage &usage : usages)
-    {
-        usageMap.emplace(usage.name, usage);
-    }
-
-    return usageMap;
+    return ResourceUsages(usages);
 }
 
-auto D3D12HelloTexture::MakeGBufferReadUsageMap() const -> ResourceUsageMap
+auto D3D12HelloTexture::MakeGBufferReadUsages() const -> ResourceUsages
 {
-    return MakeResourceUsageMap(
+    return MakeResourceUsages(
         {{kGBufferResourceNames[GBuffer::Albedo], m_gbuffer.resources[GBuffer::Albedo].Get(),
           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE},
          {kGBufferResourceNames[GBuffer::Normal], m_gbuffer.resources[GBuffer::Normal].Get(),

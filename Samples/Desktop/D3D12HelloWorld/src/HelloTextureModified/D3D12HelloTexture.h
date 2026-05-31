@@ -529,7 +529,7 @@ class D3D12HelloTexture : public DXSample
         bool retired = false;        // false : waiting for GPU fence
     };
 
-    using ResourceUsageMap = std::unordered_map<std::string, ResourceUsage>;
+    using ResourceUsages = std::vector<ResourceUsage>;
     using ResourceStateMap = std::unordered_map<std::string, D3D12_RESOURCE_STATES>;
     using ResourceLifetimeMap = std::unordered_map<std::string, ResourceLifetime>;
     using TransientResourceMap = std::unordered_map<std::string, TransientResource>;
@@ -576,20 +576,20 @@ class D3D12HelloTexture : public DXSample
     {
         const wchar_t *name;
         PipelineKey pipeline;
-        ResourceUsageMap reads;
-        ResourceUsageMap writes;
+        ResourceUsages reads;
+        ResourceUsages writes;
         std::vector<PassDescriptorBinding> descriptorBindings;
         PassRenderTargetBinding renderTargets;
         PassOperation operation;
 
         template <typename Func> void ForEachResourceUsage(Func func) const
         {
-            for (const auto &[name, usage] : reads)
+            for (const ResourceUsage &usage : reads)
             {
                 func(usage);
             }
 
-            for (const auto &[name, usage] : writes)
+            for (const ResourceUsage &usage : writes)
             {
                 func(usage);
             }
@@ -645,11 +645,11 @@ class D3D12HelloTexture : public DXSample
     std::vector<UINT8> GenerateCheckerboardTextureData();
     void PopulateCommandList();
 
-    void AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsageMap reads, ResourceUsageMap writes,
+    void AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsages reads, ResourceUsages writes,
                  std::vector<PassDescriptorBinding> descriptorBindings, PassRenderTargetBinding renderTargets,
                  PassOperation operation);
-    ResourceUsageMap MakeResourceUsageMap(std::initializer_list<ResourceUsage> usages) const;
-    ResourceUsageMap MakeGBufferReadUsageMap() const;
+    ResourceUsages MakeResourceUsages(std::initializer_list<ResourceUsage> usages) const;
+    ResourceUsages MakeGBufferReadUsages() const;
     std::vector<PassDescriptorBinding> MakeGBufferSrvBindings() const;
     void BuildRenderPasses();
     void AnalyzeResourceLifetimes();
