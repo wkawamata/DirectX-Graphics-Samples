@@ -887,7 +887,8 @@ void D3D12HelloTexture::LoadAssets()
         // GBuffer Debug PSO
         //
         D3D12_GRAPHICS_PIPELINE_STATE_DESC gbufferDebugPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
-            psoDesc, pGBufferDebugVS, gbufferDebugVSSize, pGBufferDebugPS, gbufferDebugPSSize, m_backBufferFormat);
+            psoDesc, pGBufferDebugVS, gbufferDebugVSSize, pGBufferDebugPS, gbufferDebugPSSize,
+            DXGI_FORMAT_R16G16B16A16_FLOAT);
         m_pipelineRegistry.Create(m_device.Get(), PipelineKey::GBufferDebug, gbufferDebugPSODesc);
 
         //
@@ -2084,11 +2085,6 @@ void D3D12HelloTexture::BuildRenderPasses()
         AddPass(MakeDebugDumpPass());
     }
 
-    if (m_renderingPath == RenderingPath::Deferred && m_debugViewSettings.IsGBufferDebugView())
-    {
-        AddPass(MakeGBufferDebugPass());
-    }
-
     AddPass(MakeImGuiPass());
 }
 
@@ -2101,7 +2097,11 @@ void D3D12HelloTexture::AddSceneRenderPasses()
     else
     {
         AddPass(MakeGBufferPass());
-        if (m_lightingPassDebugGradientEnabled)
+        if (m_debugViewSettings.IsGBufferDebugView())
+        {
+            AddPass(MakeGBufferDebugPass());
+        }
+        else if (m_lightingPassDebugGradientEnabled)
         {
             AddPass(MakeLightingDebugGradientPass());
         }
@@ -2252,9 +2252,9 @@ auto D3D12HelloTexture::MakeGBufferDebugPass() const -> RenderPass
     return {L"GBufferDebugPass",
             PipelineKey::GBufferDebug,
             MakeGBufferReadUsages(),
-            MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             MakeGBufferSrvBindings(),
-            {{RtvKey::BackBuffer}, std::nullopt},
+            {{RtvKey::LightPass}, std::nullopt},
             PassOperation::GBufferDebug,
             {{RootParam_GBufferDebugConstants, PassConstantsKey::GBufferDebugTarget}}};
 }
