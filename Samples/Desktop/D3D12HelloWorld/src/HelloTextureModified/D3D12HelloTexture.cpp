@@ -852,7 +852,7 @@ void D3D12HelloTexture::LoadAssets()
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = m_backBufferFormat;
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
         psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         psoDesc.SampleDesc.Count = 1;
         m_pipelineRegistry.Create(m_device.Get(), PipelineKey::Main, psoDesc);
@@ -1807,7 +1807,22 @@ void D3D12HelloTexture::UpdateImGui()
     ImGui::SliderFloat("Exposure", &m_toneMapPass.settings.exposure, 0.0f, 4.0f);
     ImGui::SliderFloat("Paper White", &m_toneMapPass.settings.paperWhiteNits, 80.0f, 500.0f, "%.0f nits");
     ImGui::SliderFloat("Display Max", &m_toneMapPass.settings.maxDisplayNits, 100.0f, 4000.0f, "%.0f nits");
+    int renderingPath = static_cast<int>(m_renderingPath);
+    ImGui::Text("Rendering Path");
+    ImGui::RadioButton("Forward", &renderingPath, static_cast<int>(RenderingPath::Forward));
+    ImGui::SameLine();
+    ImGui::RadioButton("Deferred", &renderingPath, static_cast<int>(RenderingPath::Deferred));
+    m_renderingPath = static_cast<RenderingPath>(renderingPath);
+
+    const bool deferredRendering = m_renderingPath == RenderingPath::Deferred;
+    if (!deferredRendering)
+    {
+        m_debugViewSettings.renderViewMode = RenderViewMode::LightPass;
+    }
+
+    ImGui::BeginDisabled(!deferredRendering);
     ImGui::Checkbox("Debug LightPass Gradient", &m_lightingPassDebugGradientEnabled);
+    ImGui::EndDisabled();
     if (ImGui::Button("Dump HDR Buffers"))
     {
         m_debugViewSettings.requestHdrDump = true;
@@ -1816,6 +1831,7 @@ void D3D12HelloTexture::UpdateImGui()
 
     int renderViewMode = static_cast<int>(m_debugViewSettings.renderViewMode);
     ImGui::Text("Render View");
+    ImGui::BeginDisabled(!deferredRendering);
     ImGui::RadioButton("LightPass", &renderViewMode, static_cast<int>(RenderViewMode::LightPass));
     ImGui::RadioButton("Albedo", &renderViewMode, static_cast<int>(RenderViewMode::GBufferAlbedo));
     ImGui::SameLine();
@@ -1829,6 +1845,7 @@ void D3D12HelloTexture::UpdateImGui()
     ImGui::SameLine();
     ImGui::RadioButton("Depth", &renderViewMode, static_cast<int>(RenderViewMode::Depth));
     m_debugViewSettings.renderViewMode = static_cast<RenderViewMode>(renderViewMode);
+    ImGui::EndDisabled();
 
     ImGui::Text("CPU Frame: %.2f ms (%.1f FPS)", m_cpuFrameTime, 1000.0f / m_cpuFrameTime);
 
@@ -2059,28 +2076,24 @@ void D3D12HelloTexture::BuildRenderPasses()
 
     AddPass(MakeClearPass());
     AddPass(MakeDepthPrePass());
-    AddPass(MakeGBufferPass());
-#if 1
-    AddPass({L"MainPass",
-             PipelineKey::Main,
-             MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-             {{RootParam_TextureTable, DescriptorKey::TextureTable},
-              {RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
-              {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
-              {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
-             {{RtvKey::BackBuffer}, DsvKey::Depth},
-             PassOperation::Main});
-#else
 
-    if (m_lightingPassDebugGradientEnabled)
+    if (m_renderingPath == RenderingPath::Forward)
     {
-        AddPass(MakeLightingDebugGradientPass());
+        AddPass(MakeMainPass());
     }
     else
     {
-        AddPass(MakeLightingPass());
+        AddPass(MakeGBufferPass());
+        if (m_lightingPassDebugGradientEnabled)
+        {
+            AddPass(MakeLightingDebugGradientPass());
+        }
+        else
+        {
+            AddPass(MakeLightingPass());
+        }
     }
+
     AddPass(MakeToneMapPass());
 
     if (m_debugViewSettings.requestHdrDump)
@@ -2088,11 +2101,11 @@ void D3D12HelloTexture::BuildRenderPasses()
         AddPass(MakeDebugDumpPass());
     }
 
-    if (m_debugViewSettings.IsGBufferDebugView())
+    if (m_renderingPath == RenderingPath::Deferred && m_debugViewSettings.IsGBufferDebugView())
     {
         AddPass(MakeGBufferDebugPass());
     }
-#endif
+
     AddPass({L"ImGui",
              PipelineKey::None,
              {},
@@ -2167,6 +2180,21 @@ auto D3D12HelloTexture::MakeGBufferPass() const -> RenderPass
               RtvKey::GBufferPBRParams},
              DsvKey::Depth},
             PassOperation::GBuffer};
+}
+
+auto D3D12HelloTexture::MakeMainPass() const -> RenderPass
+{
+    return {L"MainPass",
+            PipelineKey::Main,
+            MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            {{RootParam_TextureTable, DescriptorKey::TextureTable},
+             {RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
+             {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
+             {RootParam_LightConstants, DescriptorKey::LightCbv}},
+            {{RtvKey::LightPass}, DsvKey::Depth, std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}},
+            PassOperation::Main};
 }
 
 auto D3D12HelloTexture::MakeLightingPass() const -> RenderPass
@@ -2352,7 +2380,7 @@ void D3D12HelloTexture::ExecutePassOperation(const RenderPass &pass)
         RecordGBufferPass(pass.renderTargets);
         break;
     case PassOperation::Main:
-        RecordMainPass();
+        RecordMainPass(pass.renderTargets);
         break;
     case PassOperation::Lighting:
         RecordLightPass();
@@ -2831,9 +2859,17 @@ void D3D12HelloTexture::PrintDebugDump()
 //
 // Main Pass
 //
-void D3D12HelloTexture::RecordMainPass()
+void D3D12HelloTexture::RecordMainPass(const PassRenderTargetBinding &renderTargets)
 {
     PIXBeginEvent(m_commandList.Get(), 0, L"MainPass");
+    if (renderTargets.clearColor)
+    {
+        for (RtvKey rtv : renderTargets.rtvs)
+        {
+            m_commandList->ClearRenderTargetView(ResolveRtv(rtv), renderTargets.clearColor->data(), 0, nullptr);
+        }
+    }
+
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     DrawInstanceWrapper(GetVisibleCubeCount());

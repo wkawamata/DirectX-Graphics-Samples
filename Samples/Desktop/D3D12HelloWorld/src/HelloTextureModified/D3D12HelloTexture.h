@@ -340,6 +340,12 @@ class D3D12HelloTexture : public DXSample
         Depth,
     };
 
+    enum class RenderingPath
+    {
+        Forward = 0,
+        Deferred,
+    };
+
     struct DebugViewSettings
     {
         RenderViewMode renderViewMode = RenderViewMode::LightPass;
@@ -400,6 +406,7 @@ class D3D12HelloTexture : public DXSample
     ComPtr<ID3D12DescriptorHeap> m_imguiHeap;
     SimpleDescriptorHeapAllocator m_ImGuiDescriptorHeapAllocator;
 
+    RenderingPath m_renderingPath = RenderingPath::Deferred;
     bool m_lightingPassDebugGradientEnabled = false;
     ToneMapPass m_toneMapPass;
 
@@ -688,6 +695,7 @@ class D3D12HelloTexture : public DXSample
     RenderPass MakeClearPass() const;
     RenderPass MakeDepthPrePass() const;
     RenderPass MakeGBufferPass() const;
+    RenderPass MakeMainPass() const;
     RenderPass MakeLightingPass() const;
     RenderPass MakeLightingDebugGradientPass() const;
     RenderPass MakeToneMapPass() const;
@@ -742,7 +750,7 @@ class D3D12HelloTexture : public DXSample
     void RecordLightPassDebugGradient();
     void RecordToneMapPass();
     void RecordDebugDumpPass();
-    void RecordMainPass();
+    void RecordMainPass(const PassRenderTargetBinding &renderTargets);
     void RecordImGuiPass();
     void EndFrame();
     void CreateDebugDumpReadback(ID3D12Resource *source, ComPtr<ID3D12Resource> &readback,
