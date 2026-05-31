@@ -1821,9 +1821,6 @@ void D3D12HelloTexture::UpdateImGui()
         m_debugViewSettings.renderViewMode = RenderViewMode::LightPass;
     }
 
-    ImGui::BeginDisabled(!deferredRendering);
-    ImGui::Checkbox("Debug LightPass Gradient", &m_lightingPassDebugGradientEnabled);
-    ImGui::EndDisabled();
     if (ImGui::Button("Dump HDR Buffers"))
     {
         m_debugViewSettings.requestHdrDump = true;
@@ -1846,6 +1843,11 @@ void D3D12HelloTexture::UpdateImGui()
     ImGui::SameLine();
     ImGui::RadioButton("Depth", &renderViewMode, static_cast<int>(RenderViewMode::Depth));
     m_debugViewSettings.renderViewMode = static_cast<RenderViewMode>(renderViewMode);
+    ImGui::EndDisabled();
+
+    const bool lightPassView = deferredRendering && m_debugViewSettings.renderViewMode == RenderViewMode::LightPass;
+    ImGui::BeginDisabled(!lightPassView);
+    ImGui::Checkbox("Debug LightPass Gradient", &m_lightingPassDebugGradientEnabled);
     ImGui::EndDisabled();
 
     ImGui::Text("CPU Frame: %.2f ms (%.1f FPS)", m_cpuFrameTime, 1000.0f / m_cpuFrameTime);
