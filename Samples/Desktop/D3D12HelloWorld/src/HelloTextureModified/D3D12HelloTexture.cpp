@@ -2076,7 +2076,24 @@ void D3D12HelloTexture::BuildRenderPasses()
 
     AddPass(MakeClearPass());
     AddPass(MakeDepthPrePass());
+    AddSceneRenderPasses();
+    AddPass(MakeToneMapPass());
 
+    if (m_debugViewSettings.requestHdrDump)
+    {
+        AddPass(MakeDebugDumpPass());
+    }
+
+    if (m_renderingPath == RenderingPath::Deferred && m_debugViewSettings.IsGBufferDebugView())
+    {
+        AddPass(MakeGBufferDebugPass());
+    }
+
+    AddPass(MakeImGuiPass());
+}
+
+void D3D12HelloTexture::AddSceneRenderPasses()
+{
     if (m_renderingPath == RenderingPath::Forward)
     {
         AddPass(MakeMainPass());
@@ -2093,26 +2110,6 @@ void D3D12HelloTexture::BuildRenderPasses()
             AddPass(MakeLightingPass());
         }
     }
-
-    AddPass(MakeToneMapPass());
-
-    if (m_debugViewSettings.requestHdrDump)
-    {
-        AddPass(MakeDebugDumpPass());
-    }
-
-    if (m_renderingPath == RenderingPath::Deferred && m_debugViewSettings.IsGBufferDebugView())
-    {
-        AddPass(MakeGBufferDebugPass());
-    }
-
-    AddPass({L"ImGui",
-             PipelineKey::None,
-             {},
-             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-             {},
-             {{RtvKey::BackBuffer}, std::nullopt},
-             PassOperation::ImGui});
 }
 
 void D3D12HelloTexture::AddPass(RenderPass pass) { m_renderPasses.push_back(std::move(pass)); }
@@ -2260,6 +2257,17 @@ auto D3D12HelloTexture::MakeGBufferDebugPass() const -> RenderPass
             {{RtvKey::BackBuffer}, std::nullopt},
             PassOperation::GBufferDebug,
             {{RootParam_GBufferDebugConstants, PassConstantsKey::GBufferDebugTarget}}};
+}
+
+auto D3D12HelloTexture::MakeImGuiPass() const -> RenderPass
+{
+    return {L"ImGui",
+            PipelineKey::None,
+            {},
+            MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            {},
+            {{RtvKey::BackBuffer}, std::nullopt},
+            PassOperation::ImGui};
 }
 
 void D3D12HelloTexture::AnalyzeResourceLifetimes() { m_resourceRegistry.AnalyzeLifetimes(m_renderPasses); }

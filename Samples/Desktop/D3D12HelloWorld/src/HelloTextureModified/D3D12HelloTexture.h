@@ -701,7 +701,9 @@ class D3D12HelloTexture : public DXSample
     RenderPass MakeToneMapPass() const;
     RenderPass MakeDebugDumpPass() const;
     RenderPass MakeGBufferDebugPass() const;
+    RenderPass MakeImGuiPass() const;
     void BuildRenderPasses();
+    void AddSceneRenderPasses();
     void AnalyzeResourceLifetimes();
     void DebugPrintLifetimes();
     void ExecutePasses();
