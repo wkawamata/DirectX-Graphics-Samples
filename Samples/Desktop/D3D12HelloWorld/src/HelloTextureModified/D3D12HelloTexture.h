@@ -277,11 +277,15 @@ class D3D12HelloTexture : public DXSample
     struct LightingPass
     {
         ComPtr<ID3D12PipelineState> pipelineState;
-        ComPtr<ID3D12PipelineState> debugGradientPipelineState;
-        bool debugGradientEnabled = false;
 
-        void Record(ID3D12GraphicsCommandList *commandList, const ToneMapPass &toneMapPass,
-                    const HdrOutputSettings &hdrOutputSettings) const;
+        void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
+    };
+
+    struct LightingPassDebugGradient
+    {
+        ComPtr<ID3D12PipelineState> pipelineState;
+
+        void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
     };
 
     struct ConstantBufferResource
@@ -417,8 +421,12 @@ class D3D12HelloTexture : public DXSample
     ComPtr<ID3D12PipelineState> m_depthPrePassPSO;
     ComPtr<ID3D12PipelineState> m_gbufferPSO;
     ComPtr<ID3D12PipelineState> m_gbufferDebugPSO;
+
+    bool m_lightingPassDebugGradientEnabled = false;
     LightingPass m_lightingPass;
+    LightingPassDebugGradient m_lightingPassDebugGradient;
     ToneMapPass m_toneMapPass;
+
     PipelineRegistry m_pipelineRegistry;
 
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
@@ -601,6 +609,7 @@ class D3D12HelloTexture : public DXSample
         GBuffer,
         Main,
         Lighting,
+        LightingDebugGradient,
         ToneMap,
         DebugDump,
         GBufferDebug,
@@ -687,7 +696,8 @@ class D3D12HelloTexture : public DXSample
     ResourceUsages MakeResourceUsages(std::initializer_list<ResourceUsage> usages) const;
     ResourceUsages MakeGBufferReadUsages() const;
     std::vector<PassDescriptorBinding> MakeGBufferSrvBindings() const;
-    RenderPass MakeLightPass() const;
+    RenderPass MakeLightingPass() const;
+    RenderPass MakeLightingDebugGradientPass() const;
     RenderPass MakeToneMapPass() const;
     RenderPass MakeGBufferDebugPass() const;
     void BuildRenderPasses();
@@ -736,6 +746,7 @@ class D3D12HelloTexture : public DXSample
     void RecordGBufferPass(const PassRenderTargetBinding &renderTargets);
     void RecordGBufferDebugPass();
     void RecordLightPass();
+    void RecordLightPassDebugGradient();
     void RecordToneMapPass();
     void RecordDebugDumpPass();
     void RecordMainPass();

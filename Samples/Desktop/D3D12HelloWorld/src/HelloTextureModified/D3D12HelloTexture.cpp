@@ -106,14 +106,16 @@ void D3D12HelloTexture::ToneMapPass::Record(ID3D12GraphicsCommandList *commandLi
     commandList->DrawInstanced(3, 1, 0, 0);
 }
 
-void D3D12HelloTexture::LightingPass::Record(ID3D12GraphicsCommandList *commandList, const ToneMapPass &toneMapPass,
+void D3D12HelloTexture::LightingPass::Record(ID3D12GraphicsCommandList *commandList,
                                              const HdrOutputSettings &hdrOutputSettings) const
 {
-    if (debugGradientEnabled)
-    {
-        toneMapPass.SetConstants(commandList, hdrOutputSettings);
-    }
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->DrawInstanced(3, 1, 0, 0);
+}
 
+void D3D12HelloTexture::LightingPassDebugGradient::Record(ID3D12GraphicsCommandList *commandList,
+                                                          const HdrOutputSettings &hdrOutputSettings) const
+{
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->DrawInstanced(3, 1, 0, 0);
 }
@@ -900,7 +902,7 @@ void D3D12HelloTexture::LoadAssets()
             psoDesc, pLightPassDebugGradientVS, lightPassDebugGradientVSSize, pLightPassDebugGradientPS,
             lightPassDebugGradientPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
         ThrowIfFailed(m_device->CreateGraphicsPipelineState(&lightPassDebugGradientPSODesc,
-                                                            IID_PPV_ARGS(&m_lightingPass.debugGradientPipelineState)));
+                                                            IID_PPV_ARGS(&m_lightingPassDebugGradient.pipelineState)));
 
         //
         // ToneMap PSO
@@ -1835,7 +1837,7 @@ void D3D12HelloTexture::UpdateImGui()
     ImGui::SliderFloat("Exposure", &m_toneMapPass.settings.exposure, 0.0f, 4.0f);
     ImGui::SliderFloat("Paper White", &m_toneMapPass.settings.paperWhiteNits, 80.0f, 500.0f, "%.0f nits");
     ImGui::SliderFloat("Display Max", &m_toneMapPass.settings.maxDisplayNits, 100.0f, 4000.0f, "%.0f nits");
-    ImGui::Checkbox("Debug LightPass Gradient", &m_lightingPass.debugGradientEnabled);
+    ImGui::Checkbox("Debug LightPass Gradient", &m_lightingPassDebugGradientEnabled);
     if (ImGui::Button("Dump HDR Buffers"))
     {
         m_debugViewSettings.requestHdrDump = true;
@@ -2129,7 +2131,15 @@ void D3D12HelloTexture::BuildRenderPasses()
              {{RtvKey::BackBuffer}, DsvKey::Depth},
              PassOperation::Main});
 #endif
-    AddPass(MakeLightPass());
+
+    if (m_lightingPassDebugGradientEnabled)
+    {
+        AddPass(MakeLightingDebugGradientPass());
+    }
+    else
+    {
+        AddPass(MakeLightingPass());
+    }
     AddPass(MakeToneMapPass());
 
     if (m_debugViewSettings.requestHdrDump)
@@ -2158,10 +2168,7 @@ void D3D12HelloTexture::BuildRenderPasses()
              PassOperation::ImGui});
 }
 
-void D3D12HelloTexture::AddPass(RenderPass pass)
-{
-    m_renderPasses.push_back(std::move(pass));
-}
+void D3D12HelloTexture::AddPass(RenderPass pass) { m_renderPasses.push_back(std::move(pass)); }
 
 auto D3D12HelloTexture::MakeResourceUsages(std::initializer_list<ResourceUsage> usages) const -> ResourceUsages
 {
@@ -2184,10 +2191,10 @@ auto D3D12HelloTexture::MakeGBufferSrvBindings() const -> std::vector<PassDescri
     return {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv}};
 }
 
-auto D3D12HelloTexture::MakeLightPass() const -> RenderPass
+auto D3D12HelloTexture::MakeLightingPass() const -> RenderPass
 {
     return {L"LightPass",
-            m_lightingPass.debugGradientEnabled ? PipelineKey::LightingDebugGradient : PipelineKey::Lighting,
+            PipelineKey::Lighting,
             MakeGBufferReadUsages(),
             MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv},
@@ -2196,6 +2203,20 @@ auto D3D12HelloTexture::MakeLightPass() const -> RenderPass
              {RootParam_LightConstants, DescriptorKey::LightCbv}},
             {{RtvKey::LightPass}, std::nullopt},
             PassOperation::Lighting};
+}
+
+auto D3D12HelloTexture::MakeLightingDebugGradientPass() const -> RenderPass
+{
+    return {L"LightPassDebugGradient",
+            PipelineKey::LightingDebugGradient, // ここが違う
+            MakeGBufferReadUsages(),
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv},
+             {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
+             {RootParam_LightConstants, DescriptorKey::LightCbv}},
+            {{RtvKey::LightPass}, std::nullopt},
+            PassOperation::LightingDebugGradient}; // ここが違う
 }
 
 auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
@@ -2211,13 +2232,11 @@ auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
 
 auto D3D12HelloTexture::MakeGBufferDebugPass() const -> RenderPass
 {
-    return {L"GBufferDebugPass",
-            PipelineKey::GBufferDebug,
-            MakeGBufferReadUsages(),
-            MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-            MakeGBufferSrvBindings(),
-            {{RtvKey::BackBuffer}, std::nullopt},
-            PassOperation::GBufferDebug};
+    return {
+        L"GBufferDebugPass",        PipelineKey::GBufferDebug,
+        MakeGBufferReadUsages(),    MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+        MakeGBufferSrvBindings(),   {{RtvKey::BackBuffer}, std::nullopt},
+        PassOperation::GBufferDebug};
 }
 
 void D3D12HelloTexture::RegisterPipelineStates()
@@ -2226,7 +2245,7 @@ void D3D12HelloTexture::RegisterPipelineStates()
     m_pipelineRegistry.Register(PipelineKey::DepthPrePass, m_depthPrePassPSO.Get());
     m_pipelineRegistry.Register(PipelineKey::GBuffer, m_gbufferPSO.Get());
     m_pipelineRegistry.Register(PipelineKey::Lighting, m_lightingPass.pipelineState.Get());
-    m_pipelineRegistry.Register(PipelineKey::LightingDebugGradient, m_lightingPass.debugGradientPipelineState.Get());
+    m_pipelineRegistry.Register(PipelineKey::LightingDebugGradient, m_lightingPassDebugGradient.pipelineState.Get());
     m_pipelineRegistry.Register(PipelineKey::ToneMap, m_toneMapPass.pipelineState.Get());
     m_pipelineRegistry.Register(PipelineKey::GBufferDebug, m_gbufferDebugPSO.Get());
 }
@@ -2327,6 +2346,9 @@ void D3D12HelloTexture::ExecutePassOperation(const RenderPass &pass)
         break;
     case PassOperation::Lighting:
         RecordLightPass();
+        break;
+    case PassOperation::LightingDebugGradient:
+        RecordLightPassDebugGradient();
         break;
     case PassOperation::ToneMap:
         RecordToneMapPass();
@@ -2607,11 +2629,24 @@ void D3D12HelloTexture::RecordGBufferDebugPass()
     m_gpuWorkMeter.SetCheckPoint(m_commandList.Get(), "GBuffer Debug Pass");
 }
 
+void D3D12HelloTexture::RecordLightPassDebugGradient()
+{
+    PIXBeginEvent(m_commandList.Get(), 0, L"RecordLightPassDebugGradient");
+
+    m_toneMapPass.SetConstants(m_commandList.Get(), m_hdrOutputPolicy.settings); // ここが違う。
+
+    m_lightingPassDebugGradient.Record(m_commandList.Get(), m_hdrOutputPolicy.settings);
+
+    PIXEndEvent(m_commandList.Get());
+
+    m_gpuWorkMeter.SetCheckPoint(m_commandList.Get(), "LightPassDebugGradient Pass");
+}
+
 void D3D12HelloTexture::RecordLightPass()
 {
     PIXBeginEvent(m_commandList.Get(), 0, L"LightPass");
 
-    m_lightingPass.Record(m_commandList.Get(), m_toneMapPass, m_hdrOutputPolicy.settings);
+    m_lightingPass.Record(m_commandList.Get(), m_hdrOutputPolicy.settings);
 
     PIXEndEvent(m_commandList.Get());
 
@@ -2687,17 +2722,17 @@ void D3D12HelloTexture::PrintDebugDump()
     const UINT backBufferHeight = m_backBufferDebugDumpLayout.Footprint.Height;
     const UINT sampleYs[] = {lightHeight > 0 ? lightHeight / 4 : 0, lightHeight > 0 ? (lightHeight * 3) / 4 : 0};
     const char *bandNames[] = {"SDR[0,1]", "HDR[0,9]"};
-    const UINT bandCount = m_lightingPass.debugGradientEnabled ? 2 : 1;
+    const UINT bandCount = m_lightingPassDebugGradientEnabled ? 2 : 1;
     const UINT sampleXs[] = {0, lightWidth / 4, lightWidth / 2, lightWidth > 0 ? lightWidth - 1 : 0};
     const char *sampleNames[] = {"left", "25%", "50%", "right"};
 
     DebugPrint("HDR DebugDump: LightPass=%ux%u BackBuffer=%ux%u hdr10=%d gradient=%d toneMap=%d exposure=%.3f "
                "paperWhite=%.1f maxDisplay=%.1f\n",
                lightWidth, lightHeight, backBufferWidth, backBufferHeight,
-               m_hdrOutputPolicy.settings.hdr10Enabled ? 1 : 0, m_lightingPass.debugGradientEnabled ? 1 : 0,
+               m_hdrOutputPolicy.settings.hdr10Enabled ? 1 : 0, m_lightingPassDebugGradientEnabled ? 1 : 0,
                m_toneMapPass.settings.operatorIndex, m_toneMapPass.settings.exposure,
                m_toneMapPass.settings.paperWhiteNits, m_toneMapPass.settings.maxDisplayNits);
-    if (m_lightingPass.debugGradientEnabled)
+    if (m_lightingPassDebugGradientEnabled)
     {
         const float displayMaxSceneLinear =
             m_toneMapPass.settings.maxDisplayNits / (std::max)(m_toneMapPass.settings.paperWhiteNits, 1.0f);
@@ -2710,8 +2745,8 @@ void D3D12HelloTexture::PrintDebugDump()
     for (UINT band = 0; band < bandCount; ++band)
     {
         const UINT sampleY =
-            m_lightingPass.debugGradientEnabled ? sampleYs[band] : (lightHeight > 0 ? lightHeight / 2 : 0);
-        const char *bandName = m_lightingPass.debugGradientEnabled ? bandNames[band] : "Scene";
+            m_lightingPassDebugGradientEnabled ? sampleYs[band] : (lightHeight > 0 ? lightHeight / 2 : 0);
+        const char *bandName = m_lightingPassDebugGradientEnabled ? bandNames[band] : "Scene";
 
         for (UINT i = 0; i < _countof(sampleXs); ++i)
         {
@@ -2742,7 +2777,7 @@ void D3D12HelloTexture::PrintDebugDump()
             DebugPrint("  %s %s x=%u y=%u LightPass RGBA=(%.4f, %.4f, %.4f, %.4f)\n", bandName, sampleNames[i], lightX,
                        sampleY, lightR, lightG, lightB, lightA);
 
-            if (m_lightingPass.debugGradientEnabled)
+            if (m_lightingPassDebugGradientEnabled)
             {
                 const float expectedRampInput = (std::clamp)(expectedU, 0.0f, 1.0f);
                 const float expectedMaxLinear = expectedV < 0.5f ? 1.0f : 9.0f;
