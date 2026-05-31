@@ -2129,24 +2129,8 @@ void D3D12HelloTexture::BuildRenderPasses()
              {{RtvKey::BackBuffer}, DsvKey::Depth},
              PassOperation::Main});
 #endif
-    AddPass({L"LightPass",
-             m_lightingPass.debugGradientEnabled ? PipelineKey::LightingDebugGradient : PipelineKey::Lighting,
-             MakeGBufferReadUsages(),
-             MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-             {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv},
-              {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
-              {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
-              {RootParam_LightConstants, DescriptorKey::LightCbv}},
-             {{RtvKey::LightPass}, std::nullopt},
-             PassOperation::Lighting});
-
-    AddPass({L"ToneMapPass",
-             PipelineKey::ToneMap,
-             MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}}),
-             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-             {{RootParam_ToneMapSceneColor, DescriptorKey::ToneMapSceneColorSrv}},
-             {{RtvKey::BackBuffer}, std::nullopt},
-             PassOperation::ToneMap});
+    AddPass(MakeLightPass());
+    AddPass(MakeToneMapPass());
 
     if (m_debugViewSettings.requestHdrDump)
     {
@@ -2204,6 +2188,31 @@ auto D3D12HelloTexture::MakeGBufferReadUsages() const -> ResourceUsages
 auto D3D12HelloTexture::MakeGBufferSrvBindings() const -> std::vector<PassDescriptorBinding>
 {
     return {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv}};
+}
+
+auto D3D12HelloTexture::MakeLightPass() const -> RenderPass
+{
+    return {L"LightPass",
+            m_lightingPass.debugGradientEnabled ? PipelineKey::LightingDebugGradient : PipelineKey::Lighting,
+            MakeGBufferReadUsages(),
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv},
+             {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
+             {RootParam_LightConstants, DescriptorKey::LightCbv}},
+            {{RtvKey::LightPass}, std::nullopt},
+            PassOperation::Lighting};
+}
+
+auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
+{
+    return {L"ToneMapPass",
+            PipelineKey::ToneMap,
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}}),
+            MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            {{RootParam_ToneMapSceneColor, DescriptorKey::ToneMapSceneColorSrv}},
+            {{RtvKey::BackBuffer}, std::nullopt},
+            PassOperation::ToneMap};
 }
 
 void D3D12HelloTexture::RegisterPipelineStates()

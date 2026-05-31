@@ -687,6 +687,8 @@ class D3D12HelloTexture : public DXSample
     ResourceUsages MakeResourceUsages(std::initializer_list<ResourceUsage> usages) const;
     ResourceUsages MakeGBufferReadUsages() const;
     std::vector<PassDescriptorBinding> MakeGBufferSrvBindings() const;
+    RenderPass MakeLightPass() const;
+    RenderPass MakeToneMapPass() const;
     void BuildRenderPasses();
     void RegisterPipelineStates();
     void AnalyzeResourceLifetimes();
