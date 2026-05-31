@@ -683,9 +683,7 @@ class D3D12HelloTexture : public DXSample
     std::vector<UINT8> GenerateCheckerboardTextureData();
     void PopulateCommandList();
 
-    void AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsages reads, ResourceUsages writes,
-                 std::vector<PassDescriptorBinding> descriptorBindings, PassRenderTargetBinding renderTargets,
-                 PassOperation operation);
+    void AddPass(RenderPass pass);
     ResourceUsages MakeResourceUsages(std::initializer_list<ResourceUsage> usages) const;
     ResourceUsages MakeGBufferReadUsages() const;
     std::vector<PassDescriptorBinding> MakeGBufferSrvBindings() const;
