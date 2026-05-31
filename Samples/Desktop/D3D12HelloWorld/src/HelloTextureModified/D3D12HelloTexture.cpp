@@ -2144,14 +2144,7 @@ void D3D12HelloTexture::BuildRenderPasses()
 
     if (m_debugViewSettings.requestHdrDump)
     {
-        AddPass({L"DebugDump",
-                 PipelineKey::None,
-                 MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_COPY_SOURCE},
-                                     {kBackBufferResourceName, D3D12_RESOURCE_STATE_COPY_SOURCE}}),
-                 {},
-                 {},
-                 {{}, std::nullopt},
-                 PassOperation::DebugDump});
+        AddPass(MakeDebugDumpPass());
     }
 
     if (m_debugViewSettings.IsGBufferDebugView())
@@ -2208,7 +2201,7 @@ auto D3D12HelloTexture::MakeLightingPass() const -> RenderPass
 auto D3D12HelloTexture::MakeLightingDebugGradientPass() const -> RenderPass
 {
     return {L"LightPassDebugGradient",
-            PipelineKey::LightingDebugGradient, // ここが違う
+            PipelineKey::LightingDebugGradient,
             MakeGBufferReadUsages(),
             MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv},
@@ -2216,7 +2209,7 @@ auto D3D12HelloTexture::MakeLightingDebugGradientPass() const -> RenderPass
              {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
              {RootParam_LightConstants, DescriptorKey::LightCbv}},
             {{RtvKey::LightPass}, std::nullopt},
-            PassOperation::LightingDebugGradient}; // ここが違う
+            PassOperation::LightingDebugGradient};
 }
 
 auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
@@ -2228,6 +2221,18 @@ auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
             {{RootParam_ToneMapSceneColor, DescriptorKey::ToneMapSceneColorSrv}},
             {{RtvKey::BackBuffer}, std::nullopt},
             PassOperation::ToneMap};
+}
+
+auto D3D12HelloTexture::MakeDebugDumpPass() const -> RenderPass
+{
+    return {L"DebugDump",
+            PipelineKey::None,
+            MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_COPY_SOURCE},
+                                {kBackBufferResourceName, D3D12_RESOURCE_STATE_COPY_SOURCE}}),
+            {},
+            {},
+            {{}, std::nullopt},
+            PassOperation::DebugDump};
 }
 
 auto D3D12HelloTexture::MakeGBufferDebugPass() const -> RenderPass
@@ -2633,7 +2638,7 @@ void D3D12HelloTexture::RecordLightPassDebugGradient()
 {
     PIXBeginEvent(m_commandList.Get(), 0, L"RecordLightPassDebugGradient");
 
-    m_toneMapPass.SetConstants(m_commandList.Get(), m_hdrOutputPolicy.settings); // ここが違う。
+    m_toneMapPass.SetConstants(m_commandList.Get(), m_hdrOutputPolicy.settings);
 
     m_lightingPassDebugGradient.Record(m_commandList.Get(), m_hdrOutputPolicy.settings);
 

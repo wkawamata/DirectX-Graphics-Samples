@@ -699,6 +699,7 @@ class D3D12HelloTexture : public DXSample
     RenderPass MakeLightingPass() const;
     RenderPass MakeLightingDebugGradientPass() const;
     RenderPass MakeToneMapPass() const;
+    RenderPass MakeDebugDumpPass() const;
     RenderPass MakeGBufferDebugPass() const;
     void BuildRenderPasses();
     void RegisterPipelineStates();
