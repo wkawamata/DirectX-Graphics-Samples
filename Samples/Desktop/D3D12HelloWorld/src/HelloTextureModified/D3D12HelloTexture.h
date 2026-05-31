@@ -689,6 +689,7 @@ class D3D12HelloTexture : public DXSample
     std::vector<PassDescriptorBinding> MakeGBufferSrvBindings() const;
     RenderPass MakeLightPass() const;
     RenderPass MakeToneMapPass() const;
+    RenderPass MakeGBufferDebugPass() const;
     void BuildRenderPasses();
     void RegisterPipelineStates();
     void AnalyzeResourceLifetimes();

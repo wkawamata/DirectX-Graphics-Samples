@@ -2146,13 +2146,7 @@ void D3D12HelloTexture::BuildRenderPasses()
 
     if (m_debugViewSettings.IsGBufferDebugView())
     {
-        AddPass({L"GBufferDebugPass",
-                 PipelineKey::GBufferDebug,
-                 MakeGBufferReadUsages(),
-                 MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-                 MakeGBufferSrvBindings(),
-                 {{RtvKey::BackBuffer}, std::nullopt},
-                 PassOperation::GBufferDebug});
+        AddPass(MakeGBufferDebugPass());
     }
 
     AddPass({L"ImGui",
@@ -2213,6 +2207,17 @@ auto D3D12HelloTexture::MakeToneMapPass() const -> RenderPass
             {{RootParam_ToneMapSceneColor, DescriptorKey::ToneMapSceneColorSrv}},
             {{RtvKey::BackBuffer}, std::nullopt},
             PassOperation::ToneMap};
+}
+
+auto D3D12HelloTexture::MakeGBufferDebugPass() const -> RenderPass
+{
+    return {L"GBufferDebugPass",
+            PipelineKey::GBufferDebug,
+            MakeGBufferReadUsages(),
+            MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            MakeGBufferSrvBindings(),
+            {{RtvKey::BackBuffer}, std::nullopt},
+            PassOperation::GBufferDebug};
 }
 
 void D3D12HelloTexture::RegisterPipelineStates()
