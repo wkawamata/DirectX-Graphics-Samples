@@ -1533,6 +1533,42 @@ D3D12_CPU_DESCRIPTOR_HANDLE D3D12HelloTexture::GetLightPassRTV() const
     return h;
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE D3D12HelloTexture::ResolveRtv(RtvKey key) const
+{
+    switch (key)
+    {
+    case RtvKey::BackBuffer:
+        return GetBackBufferRtv();
+    case RtvKey::GBufferAlbedo:
+        return GetGBufferRTV(GBuffer::Albedo);
+    case RtvKey::GBufferNormal:
+        return GetGBufferRTV(GBuffer::Normal);
+    case RtvKey::GBufferMaterial:
+        return GetGBufferRTV(GBuffer::Material);
+    case RtvKey::GBufferMotionVector:
+        return GetGBufferRTV(GBuffer::MotionVector);
+    case RtvKey::GBufferPBRParams:
+        return GetGBufferRTV(GBuffer::PBRParams);
+    case RtvKey::LightPass:
+        return GetLightPassRTV();
+    default:
+        assert(false && "Unsupported RTV key.");
+        return {};
+    }
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE D3D12HelloTexture::ResolveDsv(DsvKey key) const
+{
+    switch (key)
+    {
+    case DsvKey::Depth:
+        return GetDepthDsv();
+    default:
+        assert(false && "Unsupported DSV key.");
+        return {};
+    }
+}
+
 void D3D12HelloTexture::CreateDepthStencil(UINT width, UINT height)
 {
     // Release if DS exist
@@ -2011,14 +2047,14 @@ void D3D12HelloTexture::BuildRenderPasses()
     AddPass(L"Clear", PipelineKey::None, {},
             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET},
                                 {kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-            {}, {{GetBackBufferRtv()}, GetDepthDsv(), m_backBufferClearColor}, PassOperation::Clear);
+            {}, {{RtvKey::BackBuffer}, DsvKey::Depth, m_backBufferClearColor}, PassOperation::Clear);
     AddPass(L"Depth PrePass", PipelineKey::DepthPrePass, {},
             MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             {
                 {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
                 {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv},
             },
-            {{}, GetDepthDsv()}, PassOperation::DepthPrePass);
+            {{}, DsvKey::Depth}, PassOperation::DepthPrePass);
     AddPass(L"GBufferPass", PipelineKey::GBuffer,
             MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             MakeResourceUsages({{kGBufferResourceNames[GBuffer::Albedo], D3D12_RESOURCE_STATE_RENDER_TARGET},
@@ -2030,9 +2066,9 @@ void D3D12HelloTexture::BuildRenderPasses()
              {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
              {RootParam_MaterialSrv, m_materialBufferSrv},
              {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv}},
-            {{GetGBufferRTV(GBuffer::Albedo), GetGBufferRTV(GBuffer::Normal), GetGBufferRTV(GBuffer::Material),
-              GetGBufferRTV(GBuffer::MotionVector), GetGBufferRTV(GBuffer::PBRParams)},
-             GetDepthDsv()},
+            {{RtvKey::GBufferAlbedo, RtvKey::GBufferNormal, RtvKey::GBufferMaterial, RtvKey::GBufferMotionVector,
+              RtvKey::GBufferPBRParams},
+             DsvKey::Depth},
             PassOperation::GBuffer);
 #if 0
     AddPass(L"MainPass", PipelineKey::Main,
@@ -2042,7 +2078,7 @@ void D3D12HelloTexture::BuildRenderPasses()
              {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
              {RootParam_MaterialSrv, m_materialBufferSrv},
              {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv}},
-            {{GetBackBufferRtv()}, GetDepthDsv()}, PassOperation::Main);
+            {{RtvKey::BackBuffer}, DsvKey::Depth}, PassOperation::Main);
 #endif
     AddPass(L"LightPass",
             m_lightingPass.debugGradientEnabled ? PipelineKey::LightingDebugGradient : PipelineKey::Lighting,
@@ -2052,12 +2088,12 @@ void D3D12HelloTexture::BuildRenderPasses()
              {RootParam_MaterialSrv, m_materialBufferSrv},
              {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv},
              {RootParam_LightConstants, m_frameResources[m_frameIndex].lightCB.cbv}},
-            {{GetLightPassRTV()}, std::nullopt}, PassOperation::Lighting);
+            {{RtvKey::LightPass}, std::nullopt}, PassOperation::Lighting);
 
     AddPass(L"ToneMapPass", PipelineKey::ToneMap,
             MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}}),
             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-            {{RootParam_ToneMapSceneColor, m_toneMapPass.sceneColorSrv}}, {{GetBackBufferRtv()}, std::nullopt},
+            {{RootParam_ToneMapSceneColor, m_toneMapPass.sceneColorSrv}}, {{RtvKey::BackBuffer}, std::nullopt},
             PassOperation::ToneMap);
 
     if (m_debugViewSettings.requestHdrDump)
@@ -2072,12 +2108,12 @@ void D3D12HelloTexture::BuildRenderPasses()
     {
         AddPass(L"GBufferDebugPass", PipelineKey::GBufferDebug, MakeGBufferReadUsages(),
                 MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-                MakeGBufferSrvBindings(), {{GetBackBufferRtv()}, std::nullopt}, PassOperation::GBufferDebug);
+                MakeGBufferSrvBindings(), {{RtvKey::BackBuffer}, std::nullopt}, PassOperation::GBufferDebug);
     }
 
     AddPass(L"ImGui", PipelineKey::None, {},
             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}), {},
-            {{GetBackBufferRtv()}, std::nullopt}, PassOperation::ImGui);
+            {{RtvKey::BackBuffer}, std::nullopt}, PassOperation::ImGui);
 }
 
 void D3D12HelloTexture::AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsages reads, ResourceUsages writes,
@@ -2130,11 +2166,23 @@ void D3D12HelloTexture::BindPassDescriptors(const RenderPass &pass)
 
 void D3D12HelloTexture::BindPassRenderTargets(const RenderPass &pass)
 {
-    const D3D12_CPU_DESCRIPTOR_HANDLE *rtvs =
-        pass.renderTargets.rtvs.empty() ? nullptr : pass.renderTargets.rtvs.data();
-    const D3D12_CPU_DESCRIPTOR_HANDLE *dsv = pass.renderTargets.dsv ? &pass.renderTargets.dsv.value() : nullptr;
+    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvs;
+    rtvs.reserve(pass.renderTargets.rtvs.size());
+    for (RtvKey rtv : pass.renderTargets.rtvs)
+    {
+        rtvs.push_back(ResolveRtv(rtv));
+    }
 
-    m_commandList->OMSetRenderTargets(static_cast<UINT>(pass.renderTargets.rtvs.size()), rtvs, FALSE, dsv);
+    std::optional<D3D12_CPU_DESCRIPTOR_HANDLE> dsv;
+    if (pass.renderTargets.dsv)
+    {
+        dsv = ResolveDsv(pass.renderTargets.dsv.value());
+    }
+
+    const D3D12_CPU_DESCRIPTOR_HANDLE *rtvHandles = rtvs.empty() ? nullptr : rtvs.data();
+    const D3D12_CPU_DESCRIPTOR_HANDLE *dsvHandle = dsv ? &dsv.value() : nullptr;
+
+    m_commandList->OMSetRenderTargets(static_cast<UINT>(rtvs.size()), rtvHandles, FALSE, dsvHandle);
 }
 
 ID3D12PipelineState *D3D12HelloTexture::GetPipelineState(PipelineKey pipeline) const
@@ -2420,11 +2468,12 @@ void D3D12HelloTexture::RecordClear(const PassRenderTargetBinding &renderTargets
     assert(renderTargets.dsv.has_value());
     assert(renderTargets.clearColor.has_value());
 
-    for (auto rtv : renderTargets.rtvs)
+    for (RtvKey rtv : renderTargets.rtvs)
     {
-        m_commandList->ClearRenderTargetView(rtv, renderTargets.clearColor->data(), 0, nullptr);
+        m_commandList->ClearRenderTargetView(ResolveRtv(rtv), renderTargets.clearColor->data(), 0, nullptr);
     }
-    m_commandList->ClearDepthStencilView(renderTargets.dsv.value(), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    m_commandList->ClearDepthStencilView(ResolveDsv(renderTargets.dsv.value()), D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0,
+                                         nullptr);
 
     PIXEndEvent(m_commandList.Get());
     m_gpuWorkMeter.SetCheckPoint(m_commandList.Get(), "Clear");
@@ -2464,7 +2513,8 @@ void D3D12HelloTexture::RecordGBufferPass(const PassRenderTargetBinding &renderT
 
     for (UINT i = 0; i < static_cast<UINT>(renderTargets.rtvs.size()); ++i)
     {
-        m_commandList->ClearRenderTargetView(renderTargets.rtvs[i], m_gbuffer.clearValues[i].Color, 0, nullptr);
+        m_commandList->ClearRenderTargetView(ResolveRtv(renderTargets.rtvs[i]), m_gbuffer.clearValues[i].Color, 0,
+                                             nullptr);
     }
 
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

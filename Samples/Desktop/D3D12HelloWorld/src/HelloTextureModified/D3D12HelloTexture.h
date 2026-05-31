@@ -539,10 +539,26 @@ class D3D12HelloTexture : public DXSample
         DescriptorHeapHandle handle;
     };
 
+    enum class RtvKey
+    {
+        BackBuffer,
+        GBufferAlbedo,
+        GBufferNormal,
+        GBufferMaterial,
+        GBufferMotionVector,
+        GBufferPBRParams,
+        LightPass,
+    };
+
+    enum class DsvKey
+    {
+        Depth,
+    };
+
     struct PassRenderTargetBinding
     {
-        std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvs;
-        std::optional<D3D12_CPU_DESCRIPTOR_HANDLE> dsv;
+        std::vector<RtvKey> rtvs;
+        std::optional<DsvKey> dsv;
         std::optional<std::array<float, 4>> clearColor;
     };
 
@@ -640,6 +656,8 @@ class D3D12HelloTexture : public DXSample
     D3D12_CPU_DESCRIPTOR_HANDLE GetDepthDsv() const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetGBufferRTV(UINT index) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetLightPassRTV() const;
+    D3D12_CPU_DESCRIPTOR_HANDLE ResolveRtv(RtvKey key) const;
+    D3D12_CPU_DESCRIPTOR_HANDLE ResolveDsv(DsvKey key) const;
 
     std::vector<UINT8> GenerateCheckerboardTextureData();
     void PopulateCommandList();
