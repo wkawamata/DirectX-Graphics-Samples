@@ -102,7 +102,6 @@ void D3D12HelloTexture::ToneMapPass::Record(ID3D12GraphicsCommandList *commandLi
                                             const HdrOutputSettings &hdrOutputSettings) const
 {
     SetConstants(commandList, hdrOutputSettings);
-    commandList->SetPipelineState(pipelineState.Get());
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->DrawInstanced(3, 1, 0, 0);
 }
@@ -115,7 +114,6 @@ void D3D12HelloTexture::LightingPass::Record(ID3D12GraphicsCommandList *commandL
         toneMapPass.SetConstants(commandList, hdrOutputSettings);
     }
 
-    commandList->SetPipelineState(debugGradientEnabled ? debugGradientPipelineState.Get() : pipelineState.Get());
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->DrawInstanced(3, 1, 0, 0);
 }
@@ -2016,12 +2014,12 @@ void D3D12HelloTexture::BuildRenderPasses()
 {
     m_renderPasses.clear();
 
-    AddPass(L"Clear", {},
+    AddPass(L"Clear", PipelineKey::None, {},
             MakeResourceUsageMap(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET},
                  {kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             {}, {{GetBackBufferRtv()}, GetDepthDsv(), m_backBufferClearColor}, PassOperation::Clear);
-    AddPass(L"Depth PrePass", {},
+    AddPass(L"Depth PrePass", PipelineKey::DepthPrePass, {},
             MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             {
                 {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
@@ -2029,7 +2027,7 @@ void D3D12HelloTexture::BuildRenderPasses()
             },
             {{}, GetDepthDsv()}, PassOperation::DepthPrePass);
     AddPass(
-        L"GBufferPass",
+        L"GBufferPass", PipelineKey::GBuffer,
         MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
         MakeResourceUsageMap({{kGBufferResourceNames[GBuffer::Albedo], m_gbuffer.resources[GBuffer::Albedo].Get(),
                                D3D12_RESOURCE_STATE_RENDER_TARGET},
@@ -2050,7 +2048,7 @@ void D3D12HelloTexture::BuildRenderPasses()
          GetDepthDsv()},
         PassOperation::GBuffer);
 #if 0
-    AddPass(L"MainPass",
+    AddPass(L"MainPass", PipelineKey::Main,
             MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             MakeResourceUsageMap(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET}}),
@@ -2060,7 +2058,9 @@ void D3D12HelloTexture::BuildRenderPasses()
              {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv}},
             {{GetBackBufferRtv()}, GetDepthDsv()}, PassOperation::Main);
 #endif
-    AddPass(L"LightPass", MakeGBufferReadUsageMap(),
+    AddPass(L"LightPass",
+            m_lightingPass.debugGradientEnabled ? PipelineKey::LightingDebugGradient : PipelineKey::Lighting,
+            MakeGBufferReadUsageMap(),
             MakeResourceUsageMap({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
                                    D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_GBufferSrvBase, m_gbuffer.srvHandles[GBuffer::Albedo]},
@@ -2069,7 +2069,7 @@ void D3D12HelloTexture::BuildRenderPasses()
              {RootParam_LightConstants, m_frameResources[m_frameIndex].lightCB.cbv}},
             {{GetLightPassRTV()}, std::nullopt}, PassOperation::Lighting);
 
-    AddPass(L"ToneMapPass",
+    AddPass(L"ToneMapPass", PipelineKey::ToneMap,
             MakeResourceUsageMap({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
                                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}}),
             MakeResourceUsageMap(
@@ -2080,7 +2080,7 @@ void D3D12HelloTexture::BuildRenderPasses()
     if (m_debugViewSettings.requestHdrDump)
     {
         AddPass(
-            L"DebugDump",
+            L"DebugDump", PipelineKey::None,
             MakeResourceUsageMap(
                 {{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE},
                  {kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE}}),
@@ -2089,24 +2089,25 @@ void D3D12HelloTexture::BuildRenderPasses()
 
     if (m_debugViewSettings.IsGBufferDebugView())
     {
-        AddPass(L"GBufferDebugPass", MakeGBufferReadUsageMap(),
+        AddPass(L"GBufferDebugPass", PipelineKey::GBufferDebug, MakeGBufferReadUsageMap(),
                 MakeResourceUsageMap({{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(),
                                        D3D12_RESOURCE_STATE_RENDER_TARGET}}),
                 MakeGBufferSrvBindings(), {{GetBackBufferRtv()}, std::nullopt},
                 PassOperation::GBufferDebug);
     }
 
-    AddPass(L"ImGui", {},
+    AddPass(L"ImGui", PipelineKey::None, {},
             MakeResourceUsageMap(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {}, {{GetBackBufferRtv()}, std::nullopt}, PassOperation::ImGui);
 }
 
-void D3D12HelloTexture::AddPass(const wchar_t *name, ResourceUsageMap reads, ResourceUsageMap writes,
+void D3D12HelloTexture::AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsageMap reads,
+                                ResourceUsageMap writes,
                                 std::vector<PassDescriptorBinding> descriptorBindings,
                                 PassRenderTargetBinding renderTargets, PassOperation operation)
 {
-    m_renderPasses.push_back({name, std::move(reads), std::move(writes), std::move(descriptorBindings),
+    m_renderPasses.push_back({name, pipeline, std::move(reads), std::move(writes), std::move(descriptorBindings),
                               std::move(renderTargets), operation});
 }
 
@@ -2170,6 +2171,41 @@ void D3D12HelloTexture::BindPassRenderTargets(const RenderPass &pass)
     m_commandList->OMSetRenderTargets(static_cast<UINT>(pass.renderTargets.rtvs.size()), rtvs, FALSE, dsv);
 }
 
+ID3D12PipelineState *D3D12HelloTexture::GetPipelineState(PipelineKey pipeline) const
+{
+    switch (pipeline)
+    {
+    case PipelineKey::None:
+        return nullptr;
+    case PipelineKey::Main:
+        return m_pipelineState.Get();
+    case PipelineKey::DepthPrePass:
+        return m_depthPrePassPSO.Get();
+    case PipelineKey::GBuffer:
+        return m_gbufferPSO.Get();
+    case PipelineKey::Lighting:
+        return m_lightingPass.pipelineState.Get();
+    case PipelineKey::LightingDebugGradient:
+        return m_lightingPass.debugGradientPipelineState.Get();
+    case PipelineKey::ToneMap:
+        return m_toneMapPass.pipelineState.Get();
+    case PipelineKey::GBufferDebug:
+        return m_gbufferDebugPSO.Get();
+    default:
+        assert(false && "Unsupported pipeline key.");
+        return nullptr;
+    }
+}
+
+void D3D12HelloTexture::BindPassPipeline(const RenderPass &pass)
+{
+    ID3D12PipelineState *pipelineState = GetPipelineState(pass.pipeline);
+    if (pipelineState != nullptr)
+    {
+        m_commandList->SetPipelineState(pipelineState);
+    }
+}
+
 void D3D12HelloTexture::ExecutePasses()
 {
     for (int passIndex = 0; passIndex < static_cast<int>(m_renderPasses.size()); ++passIndex)
@@ -2186,6 +2222,7 @@ void D3D12HelloTexture::ExecutePass(int passIndex)
     TransitionPassResources(pass);
     BindPassRenderTargets(pass);
     BindPassDescriptors(pass);
+    BindPassPipeline(pass);
     ExecutePassOperation(pass);
 
     ReleaseResourcesAfterPass(passIndex);
@@ -2433,7 +2470,6 @@ void D3D12HelloTexture::RecordDepthPrePass()
     PIXBeginEvent(m_commandList.Get(), 0, L"DepthPrepass");
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-    m_commandList->SetPipelineState(m_depthPrePassPSO.Get());
     DrawInstanceWrapper(GetVisibleCubeCount());
 
     PIXEndEvent(m_commandList.Get());
@@ -2450,7 +2486,6 @@ void D3D12HelloTexture::RecordGBufferPass(const PassRenderTargetBinding &renderT
         m_commandList->ClearRenderTargetView(renderTargets.rtvs[i], m_gbuffer.clearValues[i].Color, 0, nullptr);
     }
 
-    m_commandList->SetPipelineState(m_gbufferPSO.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     DrawInstanceWrapper(GetVisibleCubeCount());
@@ -2466,7 +2501,6 @@ void D3D12HelloTexture::RecordGBufferDebugPass()
 
     const UINT debugTarget = m_debugViewSettings.GetGBufferDebugTarget();
     m_commandList->SetGraphicsRoot32BitConstants(RootParam_GBufferDebugConstants, 1, &debugTarget, 0);
-    m_commandList->SetPipelineState(m_gbufferDebugPSO.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
 
@@ -2657,7 +2691,6 @@ void D3D12HelloTexture::RecordMainPass()
     PIXBeginEvent(m_commandList.Get(), 0, L"MainPass");
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-    m_commandList->SetPipelineState(m_pipelineState.Get());
     DrawInstanceWrapper(GetVisibleCubeCount());
 
     PIXEndEvent(m_commandList.Get());

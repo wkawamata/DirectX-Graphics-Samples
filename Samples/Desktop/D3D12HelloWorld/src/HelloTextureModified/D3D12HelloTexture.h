@@ -560,9 +560,22 @@ class D3D12HelloTexture : public DXSample
         ImGui,
     };
 
+    enum class PipelineKey
+    {
+        None,
+        Main,
+        DepthPrePass,
+        GBuffer,
+        Lighting,
+        LightingDebugGradient,
+        ToneMap,
+        GBufferDebug,
+    };
+
     struct RenderPass
     {
         const wchar_t *name;
+        PipelineKey pipeline;
         ResourceUsageMap reads;
         ResourceUsageMap writes;
         std::vector<PassDescriptorBinding> descriptorBindings;
@@ -619,7 +632,7 @@ class D3D12HelloTexture : public DXSample
     std::vector<UINT8> GenerateCheckerboardTextureData();
     void PopulateCommandList();
 
-    void AddPass(const wchar_t *name, ResourceUsageMap reads, ResourceUsageMap writes,
+    void AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsageMap reads, ResourceUsageMap writes,
                  std::vector<PassDescriptorBinding> descriptorBindings, PassRenderTargetBinding renderTargets,
                  PassOperation operation);
     ResourceUsageMap MakeResourceUsageMap(std::initializer_list<ResourceUsage> usages) const;
@@ -650,6 +663,8 @@ class D3D12HelloTexture : public DXSample
 
     void BindPassRenderTargets(const RenderPass &pass);
     void BindPassDescriptors(const RenderPass &pass);
+    void BindPassPipeline(const RenderPass &pass);
+    ID3D12PipelineState *GetPipelineState(PipelineKey pipeline) const;
     void TransitionPassResources(const RenderPass &pass);
     void TransitionResource(const ResourceUsage &usage);
 
