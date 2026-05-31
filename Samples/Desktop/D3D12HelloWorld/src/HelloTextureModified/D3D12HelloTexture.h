@@ -18,7 +18,6 @@
 #include <array>
 #include <chrono>
 #include <climits>
-#include <functional>
 #include <initializer_list>
 #include <optional>
 #include <string>
@@ -548,6 +547,19 @@ class D3D12HelloTexture : public DXSample
         std::optional<std::array<float, 4>> clearColor;
     };
 
+    enum class PassOperation
+    {
+        Clear,
+        DepthPrePass,
+        GBuffer,
+        Main,
+        Lighting,
+        ToneMap,
+        DebugDump,
+        GBufferDebug,
+        ImGui,
+    };
+
     struct RenderPass
     {
         const wchar_t *name;
@@ -555,7 +567,7 @@ class D3D12HelloTexture : public DXSample
         ResourceUsageMap writes;
         std::vector<PassDescriptorBinding> descriptorBindings;
         PassRenderTargetBinding renderTargets;
-        std::function<void(const RenderPass &)> execute;
+        PassOperation operation;
     };
 
     struct ResourceRegistry
@@ -609,7 +621,7 @@ class D3D12HelloTexture : public DXSample
 
     void AddPass(const wchar_t *name, ResourceUsageMap reads, ResourceUsageMap writes,
                  std::vector<PassDescriptorBinding> descriptorBindings, PassRenderTargetBinding renderTargets,
-                 std::function<void(const RenderPass &)> execute);
+                 PassOperation operation);
     ResourceUsageMap MakeResourceUsageMap(std::initializer_list<ResourceUsage> usages) const;
     ResourceUsageMap MakeGBufferReadUsageMap() const;
     std::vector<PassDescriptorBinding> MakeGBufferSrvBindings() const;
@@ -618,6 +630,7 @@ class D3D12HelloTexture : public DXSample
     void DebugPrintLifetimes();
     void ExecutePasses();
     void ExecutePass(int passIndex);
+    void ExecutePassOperation(const RenderPass &pass);
     void CreateResourcesForPass(int passIndex);
     void CreateCommittedTransientResource(TransientResource &resource);
     void BindCreatedTransientResource(const std::string &name, ID3D12Resource *resource);

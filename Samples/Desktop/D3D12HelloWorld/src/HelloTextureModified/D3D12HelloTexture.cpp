@@ -2020,15 +2020,14 @@ void D3D12HelloTexture::BuildRenderPasses()
             MakeResourceUsageMap(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET},
                  {kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-            {}, {{GetBackBufferRtv()}, GetDepthDsv(), m_backBufferClearColor},
-            [this](const RenderPass &pass) { RecordClear(pass.renderTargets); });
+            {}, {{GetBackBufferRtv()}, GetDepthDsv(), m_backBufferClearColor}, PassOperation::Clear);
     AddPass(L"Depth PrePass", {},
             MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             {
                 {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
                 {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv},
             },
-            {{}, GetDepthDsv()}, [this](const RenderPass &) { RecordDepthPrePass(); });
+            {{}, GetDepthDsv()}, PassOperation::DepthPrePass);
     AddPass(
         L"GBufferPass",
         MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
@@ -2049,7 +2048,7 @@ void D3D12HelloTexture::BuildRenderPasses()
         {{GetGBufferRTV(GBuffer::Albedo), GetGBufferRTV(GBuffer::Normal), GetGBufferRTV(GBuffer::Material),
           GetGBufferRTV(GBuffer::MotionVector), GetGBufferRTV(GBuffer::PBRParams)},
          GetDepthDsv()},
-        [this](const RenderPass &pass) { RecordGBufferPass(pass.renderTargets); });
+        PassOperation::GBuffer);
 #if 0
     AddPass(L"MainPass",
             MakeResourceUsageMap({{kDepthStencilResourceName, m_depthStencil.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
@@ -2059,7 +2058,7 @@ void D3D12HelloTexture::BuildRenderPasses()
              {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
              {RootParam_MaterialSrv, m_materialBufferSrv},
              {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv}},
-            {{GetBackBufferRtv()}, GetDepthDsv()}, [this](const RenderPass &) { RecordMainPass(); });
+            {{GetBackBufferRtv()}, GetDepthDsv()}, PassOperation::Main);
 #endif
     AddPass(L"LightPass", MakeGBufferReadUsageMap(),
             MakeResourceUsageMap({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
@@ -2068,7 +2067,7 @@ void D3D12HelloTexture::BuildRenderPasses()
              {RootParam_MaterialSrv, m_materialBufferSrv},
              {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv},
              {RootParam_LightConstants, m_frameResources[m_frameIndex].lightCB.cbv}},
-            {{GetLightPassRTV()}, std::nullopt}, [this](const RenderPass &) { RecordLightPass(); });
+            {{GetLightPassRTV()}, std::nullopt}, PassOperation::Lighting);
 
     AddPass(L"ToneMapPass",
             MakeResourceUsageMap({{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(),
@@ -2076,7 +2075,7 @@ void D3D12HelloTexture::BuildRenderPasses()
             MakeResourceUsageMap(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET}}),
             {{RootParam_ToneMapSceneColor, m_toneMapPass.sceneColorSrv}}, {{GetBackBufferRtv()}, std::nullopt},
-            [this](const RenderPass &) { RecordToneMapPass(); });
+            PassOperation::ToneMap);
 
     if (m_debugViewSettings.requestHdrDump)
     {
@@ -2085,7 +2084,7 @@ void D3D12HelloTexture::BuildRenderPasses()
             MakeResourceUsageMap(
                 {{kLightPassRenderTargetResourceName, m_lightPassRenderTarget.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE},
                  {kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE}}),
-            {}, {}, {{}, std::nullopt}, [this](const RenderPass &) { RecordDebugDumpPass(); });
+            {}, {}, {{}, std::nullopt}, PassOperation::DebugDump);
     }
 
     if (m_debugViewSettings.IsGBufferDebugView())
@@ -2094,21 +2093,21 @@ void D3D12HelloTexture::BuildRenderPasses()
                 MakeResourceUsageMap({{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(),
                                        D3D12_RESOURCE_STATE_RENDER_TARGET}}),
                 MakeGBufferSrvBindings(), {{GetBackBufferRtv()}, std::nullopt},
-                [this](const RenderPass &) { RecordGBufferDebugPass(); });
+                PassOperation::GBufferDebug);
     }
 
     AddPass(L"ImGui", {},
             MakeResourceUsageMap(
                 {{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-            {}, {{GetBackBufferRtv()}, std::nullopt}, [this](const RenderPass &) { RecordImGuiPass(); });
+            {}, {{GetBackBufferRtv()}, std::nullopt}, PassOperation::ImGui);
 }
 
 void D3D12HelloTexture::AddPass(const wchar_t *name, ResourceUsageMap reads, ResourceUsageMap writes,
                                 std::vector<PassDescriptorBinding> descriptorBindings,
-                                PassRenderTargetBinding renderTargets, std::function<void(const RenderPass &)> execute)
+                                PassRenderTargetBinding renderTargets, PassOperation operation)
 {
     m_renderPasses.push_back({name, std::move(reads), std::move(writes), std::move(descriptorBindings),
-                              std::move(renderTargets), std::move(execute)});
+                              std::move(renderTargets), operation});
 }
 
 auto D3D12HelloTexture::MakeResourceUsageMap(std::initializer_list<ResourceUsage> usages) const -> ResourceUsageMap
@@ -2187,9 +2186,46 @@ void D3D12HelloTexture::ExecutePass(int passIndex)
     TransitionPassResources(pass);
     BindPassRenderTargets(pass);
     BindPassDescriptors(pass);
-    pass.execute(pass);
+    ExecutePassOperation(pass);
 
     ReleaseResourcesAfterPass(passIndex);
+}
+
+void D3D12HelloTexture::ExecutePassOperation(const RenderPass &pass)
+{
+    switch (pass.operation)
+    {
+    case PassOperation::Clear:
+        RecordClear(pass.renderTargets);
+        break;
+    case PassOperation::DepthPrePass:
+        RecordDepthPrePass();
+        break;
+    case PassOperation::GBuffer:
+        RecordGBufferPass(pass.renderTargets);
+        break;
+    case PassOperation::Main:
+        RecordMainPass();
+        break;
+    case PassOperation::Lighting:
+        RecordLightPass();
+        break;
+    case PassOperation::ToneMap:
+        RecordToneMapPass();
+        break;
+    case PassOperation::DebugDump:
+        RecordDebugDumpPass();
+        break;
+    case PassOperation::GBufferDebug:
+        RecordGBufferDebugPass();
+        break;
+    case PassOperation::ImGui:
+        RecordImGuiPass();
+        break;
+    default:
+        assert(false && "Unsupported pass operation.");
+        break;
+    }
 }
 
 void D3D12HelloTexture::CreateResourcesForPass(int passIndex)
