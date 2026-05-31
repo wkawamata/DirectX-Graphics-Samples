@@ -841,29 +841,13 @@ void D3D12HelloTexture::LoadAssets()
         // Main Pass PSO
         //
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
-        psoDesc.pRootSignature = m_rootSignature.Get();
-        psoDesc.VS = CD3DX12_SHADER_BYTECODE(pVertexShaderData, vertexShaderDataLength);
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pPixelShaderData, pixelShaderDataLength);
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // MainPassではDepthは書かない。
-        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL; // EQUALを描画する (LESSは念のため)。
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
-        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-        psoDesc.SampleDesc.Count = 1;
-        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::Main, psoDesc);
+        RegisterMainPipeline(psoDesc, inputElementDescs, _countof(inputElementDescs), pVertexShaderData,
+                             vertexShaderDataLength, pPixelShaderData, pixelShaderDataLength);
 
         //
         // GBuffer PSO
         //
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC gbufferPSODesc = MyDx12Util::CreateGBufferPSODesc(
-            psoDesc, pGBufferVS, gbufferVSSize, pGBufferPS, gbufferPSSize, m_gbuffer.formats, GBuffer::kCount);
-        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::GBuffer, gbufferPSODesc);
+        RegisterGBufferPipeline(psoDesc, pGBufferVS, gbufferVSSize, pGBufferPS, gbufferPSSize);
 
         //
         // LightPass PSO
@@ -890,15 +874,7 @@ void D3D12HelloTexture::LoadAssets()
         //
         // Depth PrePass PSO
         //
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC depthPSODesc = psoDesc;
-        depthPSODesc.InputLayout = {depthLayout, _countof(depthLayout)};
-        depthPSODesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
-        depthPSODesc.VS = CD3DX12_SHADER_BYTECODE(pDepthVS, depthVSSize);
-        depthPSODesc.PS = {};                                                       // Pixel Shaderなし
-        depthPSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL; // Depth書き込みON
-        depthPSODesc.BlendState.RenderTarget[0].RenderTargetWriteMask = 0;          // Color write禁止
-        depthPSODesc.NumRenderTargets = 0;                                          // 重要
-        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::DepthPrePass, depthPSODesc);
+        RegisterDepthPrePassPipeline(psoDesc, depthLayout, _countof(depthLayout), pDepthVS, depthVSSize);
     }
 
     //
@@ -2062,6 +2038,53 @@ void D3D12HelloTexture::RegisterFullscreenPipeline(PipelineKey key, const D3D12_
     D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = MyDx12Util::CreateFullscreenPassPSODesc(
         baseDesc, vertexShader, vertexShaderSize, pixelShader, pixelShaderSize, renderTargetFormat);
     m_pipelineRegistry.Create(m_device.Get(), key, desc);
+}
+
+void D3D12HelloTexture::RegisterMainPipeline(D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
+                                             const D3D12_INPUT_ELEMENT_DESC *inputLayout, UINT inputLayoutCount,
+                                             const UINT8 *vertexShader, UINT vertexShaderSize,
+                                             const UINT8 *pixelShader, UINT pixelShaderSize)
+{
+    baseDesc.InputLayout = {inputLayout, inputLayoutCount};
+    baseDesc.pRootSignature = m_rootSignature.Get();
+    baseDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader, vertexShaderSize);
+    baseDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader, pixelShaderSize);
+    baseDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    baseDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    baseDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    baseDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    baseDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+    baseDesc.SampleMask = UINT_MAX;
+    baseDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    baseDesc.NumRenderTargets = 1;
+    baseDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    baseDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    baseDesc.SampleDesc.Count = 1;
+    m_pipelineRegistry.Create(m_device.Get(), PipelineKey::Main, baseDesc);
+}
+
+void D3D12HelloTexture::RegisterGBufferPipeline(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
+                                                const UINT8 *vertexShader, UINT vertexShaderSize,
+                                                const UINT8 *pixelShader, UINT pixelShaderSize)
+{
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = MyDx12Util::CreateGBufferPSODesc(
+        baseDesc, vertexShader, vertexShaderSize, pixelShader, pixelShaderSize, m_gbuffer.formats, GBuffer::kCount);
+    m_pipelineRegistry.Create(m_device.Get(), PipelineKey::GBuffer, desc);
+}
+
+void D3D12HelloTexture::RegisterDepthPrePassPipeline(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
+                                                     const D3D12_INPUT_ELEMENT_DESC *inputLayout, UINT inputLayoutCount,
+                                                     const UINT8 *vertexShader, UINT vertexShaderSize)
+{
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = baseDesc;
+    desc.InputLayout = {inputLayout, inputLayoutCount};
+    desc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+    desc.VS = CD3DX12_SHADER_BYTECODE(vertexShader, vertexShaderSize);
+    desc.PS = {};
+    desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    desc.BlendState.RenderTarget[0].RenderTargetWriteMask = 0;
+    desc.NumRenderTargets = 0;
+    m_pipelineRegistry.Create(m_device.Get(), PipelineKey::DepthPrePass, desc);
 }
 
 void D3D12HelloTexture::PopulateCommandList()

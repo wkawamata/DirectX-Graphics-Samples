@@ -673,6 +673,15 @@ class D3D12HelloTexture : public DXSample
     void RegisterFullscreenPipeline(PipelineKey key, const D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
                                     const UINT8 *vertexShader, UINT vertexShaderSize, const UINT8 *pixelShader,
                                     UINT pixelShaderSize, DXGI_FORMAT renderTargetFormat);
+    void RegisterMainPipeline(D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
+                              const D3D12_INPUT_ELEMENT_DESC *inputLayout, UINT inputLayoutCount,
+                              const UINT8 *vertexShader, UINT vertexShaderSize, const UINT8 *pixelShader,
+                              UINT pixelShaderSize);
+    void RegisterGBufferPipeline(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc, const UINT8 *vertexShader,
+                                 UINT vertexShaderSize, const UINT8 *pixelShader, UINT pixelShaderSize);
+    void RegisterDepthPrePassPipeline(const D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
+                                      const D3D12_INPUT_ELEMENT_DESC *inputLayout, UINT inputLayoutCount,
+                                      const UINT8 *vertexShader, UINT vertexShaderSize);
     void UpdateHdr10DisplayMode();
     void InitImGui();
     void CreateConstantBuffer(ConstantBufferResource &constantBuffer, const void *initialData, UINT sizeInBytes);
