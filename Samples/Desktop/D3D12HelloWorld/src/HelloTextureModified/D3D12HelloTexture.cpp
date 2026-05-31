@@ -120,9 +120,12 @@ void D3D12HelloTexture::LightingPassDebugGradient::Record(ID3D12GraphicsCommandL
     commandList->DrawInstanced(3, 1, 0, 0);
 }
 
-void D3D12HelloTexture::PipelineRegistry::Register(PipelineKey key, ID3D12PipelineState *pipelineState)
+void D3D12HelloTexture::PipelineRegistry::Create(ID3D12Device *device, PipelineKey key,
+                                                 const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc)
 {
-    pipelines[key] = pipelineState;
+    ComPtr<ID3D12PipelineState> pipelineState;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipelineState)));
+    pipelines[key] = std::move(pipelineState);
 }
 
 ID3D12PipelineState *D3D12HelloTexture::PipelineRegistry::Find(PipelineKey key) const
@@ -133,7 +136,7 @@ ID3D12PipelineState *D3D12HelloTexture::PipelineRegistry::Find(PipelineKey key) 
     }
 
     auto pipeline = pipelines.find(key);
-    return pipeline != pipelines.end() ? pipeline->second : nullptr;
+    return pipeline != pipelines.end() ? pipeline->second.Get() : nullptr;
 }
 
 void D3D12HelloTexture::ResourceRegistry::AnalyzeLifetimes(const std::vector<RenderPass> &renderPasses)
@@ -881,43 +884,40 @@ void D3D12HelloTexture::LoadAssets()
         psoDesc.RTVFormats[0] = m_backBufferFormat;
         psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         psoDesc.SampleDesc.Count = 1;
-        ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
+        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::Main, psoDesc);
 
         //
         // GBuffer PSO
         //
         D3D12_GRAPHICS_PIPELINE_STATE_DESC gbufferPSODesc = MyDx12Util::CreateGBufferPSODesc(
             psoDesc, pGBufferVS, gbufferVSSize, pGBufferPS, gbufferPSSize, m_gbuffer.formats, GBuffer::kCount);
-        ThrowIfFailed(m_device->CreateGraphicsPipelineState(&gbufferPSODesc, IID_PPV_ARGS(&m_gbufferPSO)));
+        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::GBuffer, gbufferPSODesc);
 
         //
         // LightPass PSO
         //
         D3D12_GRAPHICS_PIPELINE_STATE_DESC lightPassPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
             psoDesc, pLightPassVS, lightPassVSSize, pLightPassPS, lightPassPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
-        ThrowIfFailed(
-            m_device->CreateGraphicsPipelineState(&lightPassPSODesc, IID_PPV_ARGS(&m_lightingPass.pipelineState)));
+        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::Lighting, lightPassPSODesc);
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC lightPassDebugGradientPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
             psoDesc, pLightPassDebugGradientVS, lightPassDebugGradientVSSize, pLightPassDebugGradientPS,
             lightPassDebugGradientPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
-        ThrowIfFailed(m_device->CreateGraphicsPipelineState(&lightPassDebugGradientPSODesc,
-                                                            IID_PPV_ARGS(&m_lightingPassDebugGradient.pipelineState)));
+        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::LightingDebugGradient, lightPassDebugGradientPSODesc);
 
         //
         // ToneMap PSO
         //
         D3D12_GRAPHICS_PIPELINE_STATE_DESC toneMapPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
             psoDesc, pToneMapVS, toneMapVSSize, pToneMapPS, toneMapPSSize, m_backBufferFormat);
-        ThrowIfFailed(
-            m_device->CreateGraphicsPipelineState(&toneMapPSODesc, IID_PPV_ARGS(&m_toneMapPass.pipelineState)));
+        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::ToneMap, toneMapPSODesc);
 
         //
         // GBuffer Debug PSO
         //
         D3D12_GRAPHICS_PIPELINE_STATE_DESC gbufferDebugPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
             psoDesc, pGBufferDebugVS, gbufferDebugVSSize, pGBufferDebugPS, gbufferDebugPSSize, m_backBufferFormat);
-        ThrowIfFailed(m_device->CreateGraphicsPipelineState(&gbufferDebugPSODesc, IID_PPV_ARGS(&m_gbufferDebugPSO)));
+        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::GBufferDebug, gbufferDebugPSODesc);
 
         //
         // Depth PrePass PSO
@@ -930,9 +930,8 @@ void D3D12HelloTexture::LoadAssets()
         depthPSODesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL; // Depth書き込みON
         depthPSODesc.BlendState.RenderTarget[0].RenderTargetWriteMask = 0;          // Color write禁止
         depthPSODesc.NumRenderTargets = 0;                                          // 重要
-        ThrowIfFailed(m_device->CreateGraphicsPipelineState(&depthPSODesc, IID_PPV_ARGS(&m_depthPrePassPSO)));
+        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::DepthPrePass, depthPSODesc);
     }
-    RegisterPipelineStates();
 
     //
     CreateGBuffer();
@@ -940,7 +939,7 @@ void D3D12HelloTexture::LoadAssets()
     // Create the command list.
     ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                                               m_frameResources[m_frameIndex].commandAllocator.Get(),
-                                              m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)));
+                                              GetPipelineState(PipelineKey::Main), IID_PPV_ARGS(&m_commandList)));
 
     // Create the vertex buffer.
     GltfMeshData mesh;
@@ -2259,17 +2258,6 @@ auto D3D12HelloTexture::MakeGBufferDebugPass() const -> RenderPass
         PassOperation::GBufferDebug};
 }
 
-void D3D12HelloTexture::RegisterPipelineStates()
-{
-    m_pipelineRegistry.Register(PipelineKey::Main, m_pipelineState.Get());
-    m_pipelineRegistry.Register(PipelineKey::DepthPrePass, m_depthPrePassPSO.Get());
-    m_pipelineRegistry.Register(PipelineKey::GBuffer, m_gbufferPSO.Get());
-    m_pipelineRegistry.Register(PipelineKey::Lighting, m_lightingPass.pipelineState.Get());
-    m_pipelineRegistry.Register(PipelineKey::LightingDebugGradient, m_lightingPassDebugGradient.pipelineState.Get());
-    m_pipelineRegistry.Register(PipelineKey::ToneMap, m_toneMapPass.pipelineState.Get());
-    m_pipelineRegistry.Register(PipelineKey::GBufferDebug, m_gbufferDebugPSO.Get());
-}
-
 void D3D12HelloTexture::AnalyzeResourceLifetimes() { m_resourceRegistry.AnalyzeLifetimes(m_renderPasses); }
 
 void D3D12HelloTexture::DebugPrintLifetimes()
@@ -2556,7 +2544,8 @@ void D3D12HelloTexture::BeginFrame()
     // However, when ExecuteCommandList() is called on a particular command
     // list, that command list can then be reset at any time and must be before
     // re-recording.
-    ThrowIfFailed(m_commandList->Reset(m_frameResources[m_frameIndex].commandAllocator.Get(), m_pipelineState.Get()));
+    ThrowIfFailed(
+        m_commandList->Reset(m_frameResources[m_frameIndex].commandAllocator.Get(), GetPipelineState(PipelineKey::Main)));
 
     // Set necessary state.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());

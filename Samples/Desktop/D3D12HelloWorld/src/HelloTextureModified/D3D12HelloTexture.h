@@ -266,7 +266,6 @@ class D3D12HelloTexture : public DXSample
 
     struct ToneMapPass
     {
-        ComPtr<ID3D12PipelineState> pipelineState;
         ToneMapSettings settings;
 
         ToneMapSettings::ShaderConstants MakeShaderConstants(const HdrOutputSettings &hdrOutputSettings) const;
@@ -276,15 +275,11 @@ class D3D12HelloTexture : public DXSample
 
     struct LightingPass
     {
-        ComPtr<ID3D12PipelineState> pipelineState;
-
         void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
     };
 
     struct LightingPassDebugGradient
     {
-        ComPtr<ID3D12PipelineState> pipelineState;
-
         void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
     };
 
@@ -385,9 +380,9 @@ class D3D12HelloTexture : public DXSample
 
     struct PipelineRegistry
     {
-        std::unordered_map<PipelineKey, ID3D12PipelineState *> pipelines;
+        std::unordered_map<PipelineKey, ComPtr<ID3D12PipelineState>> pipelines;
 
-        void Register(PipelineKey key, ID3D12PipelineState *pipelineState);
+        void Create(ID3D12Device *device, PipelineKey key, const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc);
         ID3D12PipelineState *Find(PipelineKey key) const;
     };
 
@@ -416,11 +411,6 @@ class D3D12HelloTexture : public DXSample
 
     ComPtr<ID3D12DescriptorHeap> m_imguiHeap;
     SimpleDescriptorHeapAllocator m_ImGuiDescriptorHeapAllocator;
-
-    ComPtr<ID3D12PipelineState> m_pipelineState;
-    ComPtr<ID3D12PipelineState> m_depthPrePassPSO;
-    ComPtr<ID3D12PipelineState> m_gbufferPSO;
-    ComPtr<ID3D12PipelineState> m_gbufferDebugPSO;
 
     bool m_lightingPassDebugGradientEnabled = false;
     LightingPass m_lightingPass;
@@ -705,7 +695,6 @@ class D3D12HelloTexture : public DXSample
     RenderPass MakeDebugDumpPass() const;
     RenderPass MakeGBufferDebugPass() const;
     void BuildRenderPasses();
-    void RegisterPipelineStates();
     void AnalyzeResourceLifetimes();
     void DebugPrintLifetimes();
     void ExecutePasses();
