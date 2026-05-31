@@ -273,16 +273,6 @@ class D3D12HelloTexture : public DXSample
         void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
     };
 
-    struct LightingPass
-    {
-        void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
-    };
-
-    struct LightingPassDebugGradient
-    {
-        void Record(ID3D12GraphicsCommandList *commandList, const HdrOutputSettings &hdrOutputSettings) const;
-    };
-
     struct ConstantBufferResource
     {
         ComPtr<ID3D12Resource> buffer;
@@ -413,8 +403,6 @@ class D3D12HelloTexture : public DXSample
     SimpleDescriptorHeapAllocator m_ImGuiDescriptorHeapAllocator;
 
     bool m_lightingPassDebugGradientEnabled = false;
-    LightingPass m_lightingPass;
-    LightingPassDebugGradient m_lightingPassDebugGradient;
     ToneMapPass m_toneMapPass;
 
     PipelineRegistry m_pipelineRegistry;
@@ -750,6 +738,7 @@ class D3D12HelloTexture : public DXSample
     void PrintDebugDump();
 
     void DrawInstanceWrapper(UINT instanceCount);
+    void DrawFullscreenTriangle();
 
     void Resize(UINT width, UINT height);
 

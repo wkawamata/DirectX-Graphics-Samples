@@ -106,20 +106,6 @@ void D3D12HelloTexture::ToneMapPass::Record(ID3D12GraphicsCommandList *commandLi
     commandList->DrawInstanced(3, 1, 0, 0);
 }
 
-void D3D12HelloTexture::LightingPass::Record(ID3D12GraphicsCommandList *commandList,
-                                             const HdrOutputSettings &hdrOutputSettings) const
-{
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    commandList->DrawInstanced(3, 1, 0, 0);
-}
-
-void D3D12HelloTexture::LightingPassDebugGradient::Record(ID3D12GraphicsCommandList *commandList,
-                                                          const HdrOutputSettings &hdrOutputSettings) const
-{
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    commandList->DrawInstanced(3, 1, 0, 0);
-}
-
 void D3D12HelloTexture::PipelineRegistry::Create(ID3D12Device *device, PipelineKey key,
                                                  const D3D12_GRAPHICS_PIPELINE_STATE_DESC &desc)
 {
@@ -2590,6 +2576,12 @@ void D3D12HelloTexture::DrawInstanceWrapper(UINT instanceCount)
     }
 }
 
+void D3D12HelloTexture::DrawFullscreenTriangle()
+{
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_commandList->DrawInstanced(3, 1, 0, 0);
+}
+
 //
 // Depth Pre-pass
 //
@@ -2630,8 +2622,7 @@ void D3D12HelloTexture::RecordGBufferDebugPass()
 
     const UINT debugTarget = m_debugViewSettings.GetGBufferDebugTarget();
     m_commandList->SetGraphicsRoot32BitConstants(RootParam_GBufferDebugConstants, 1, &debugTarget, 0);
-    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    m_commandList->DrawInstanced(3, 1, 0, 0);
+    DrawFullscreenTriangle();
 
     PIXEndEvent(m_commandList.Get());
 
@@ -2644,7 +2635,7 @@ void D3D12HelloTexture::RecordLightPassDebugGradient()
 
     m_toneMapPass.SetConstants(m_commandList.Get(), m_hdrOutputPolicy.settings);
 
-    m_lightingPassDebugGradient.Record(m_commandList.Get(), m_hdrOutputPolicy.settings);
+    DrawFullscreenTriangle();
 
     PIXEndEvent(m_commandList.Get());
 
@@ -2655,7 +2646,7 @@ void D3D12HelloTexture::RecordLightPass()
 {
     PIXBeginEvent(m_commandList.Get(), 0, L"LightPass");
 
-    m_lightingPass.Record(m_commandList.Get(), m_hdrOutputPolicy.settings);
+    DrawFullscreenTriangle();
 
     PIXEndEvent(m_commandList.Get());
 
