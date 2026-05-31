@@ -479,7 +479,6 @@ class D3D12HelloTexture : public DXSample
     struct ResourceUsage
     {
         std::string name;
-        ID3D12Resource *resource;
         D3D12_RESOURCE_STATES state;
     };
 
