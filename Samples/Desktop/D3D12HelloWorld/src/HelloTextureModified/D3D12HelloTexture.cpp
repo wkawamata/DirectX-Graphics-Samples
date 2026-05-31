@@ -1427,11 +1427,11 @@ void D3D12HelloTexture::CreateGBufferSRVs()
     }
     assert(m_depthStencilSrv.Index == m_gbuffer.srvHandles[GBuffer::Albedo].Index + GBuffer::kCount);
 
-    if (m_toneMapPass.sceneColorSrv.Index == UINT_MAX)
+    if (m_lightPassColorSrv.Index == UINT_MAX)
     {
-        m_toneMapPass.sceneColorSrv = m_descriptorHeapAllocator.AllocWithHandle();
+        m_lightPassColorSrv = m_descriptorHeapAllocator.AllocWithHandle();
     }
-    assert(m_toneMapPass.sceneColorSrv.Index == m_depthStencilSrv.Index + 1);
+    assert(m_lightPassColorSrv.Index == m_depthStencilSrv.Index + 1);
 }
 
 void D3D12HelloTexture::RegisterDepthStencil(UINT width, UINT height)
@@ -1586,7 +1586,7 @@ DescriptorHeapHandle D3D12HelloTexture::ResolveDescriptor(DescriptorKey key) con
     case DescriptorKey::GBufferAlbedoSrv:
         return m_gbuffer.srvHandles[GBuffer::Albedo];
     case DescriptorKey::ToneMapSceneColorSrv:
-        return m_toneMapPass.sceneColorSrv;
+        return m_lightPassColorSrv;
     default:
         assert(false && "Unsupported descriptor key.");
         return {};
@@ -2360,7 +2360,7 @@ void D3D12HelloTexture::CreateLightPassRenderTargetDescriptors()
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Texture2D.MipLevels = 1;
-    m_device->CreateShaderResourceView(m_lightPassRenderTarget.Get(), &srvDesc, m_toneMapPass.sceneColorSrv.cpu);
+    m_device->CreateShaderResourceView(m_lightPassRenderTarget.Get(), &srvDesc, m_lightPassColorSrv.cpu);
 }
 
 void D3D12HelloTexture::ReleaseResourcesAfterPass(int passIndex)

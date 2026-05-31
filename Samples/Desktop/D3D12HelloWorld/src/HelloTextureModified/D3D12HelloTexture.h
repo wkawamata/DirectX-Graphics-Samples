@@ -267,7 +267,6 @@ class D3D12HelloTexture : public DXSample
     struct ToneMapPass
     {
         ComPtr<ID3D12PipelineState> pipelineState;
-        DescriptorHeapHandle sceneColorSrv;
         ToneMapSettings settings;
 
         ToneMapSettings::ShaderConstants MakeShaderConstants(const HdrOutputSettings &hdrOutputSettings) const;
@@ -379,6 +378,7 @@ class D3D12HelloTexture : public DXSample
     ComPtr<ID3D12Resource> m_depthStencil;
     ComPtr<ID3D12Resource> m_lightPassRenderTarget;
     DescriptorHeapHandle m_depthStencilSrv;
+    DescriptorHeapHandle m_lightPassColorSrv;
     ComPtr<ID3D12CommandQueue> m_commandQueue;
 
     ComPtr<ID3D12RootSignature> m_rootSignature;
