@@ -533,10 +533,21 @@ class D3D12HelloTexture : public DXSample
     using ResourceLifetimeMap = std::unordered_map<std::string, ResourceLifetime>;
     using TransientResourceMap = std::unordered_map<std::string, TransientResource>;
 
+    enum class DescriptorKey
+    {
+        TextureTable,
+        InstanceBufferSrv,
+        MaterialBufferSrv,
+        CameraCbv,
+        LightCbv,
+        GBufferAlbedoSrv,
+        ToneMapSceneColorSrv,
+    };
+
     struct PassDescriptorBinding
     {
         UINT rootParameterIndex;
-        DescriptorHeapHandle handle;
+        DescriptorKey descriptor;
     };
 
     enum class RtvKey
@@ -658,6 +669,7 @@ class D3D12HelloTexture : public DXSample
     D3D12_CPU_DESCRIPTOR_HANDLE GetLightPassRTV() const;
     D3D12_CPU_DESCRIPTOR_HANDLE ResolveRtv(RtvKey key) const;
     D3D12_CPU_DESCRIPTOR_HANDLE ResolveDsv(DsvKey key) const;
+    DescriptorHeapHandle ResolveDescriptor(DescriptorKey key) const;
 
     std::vector<UINT8> GenerateCheckerboardTextureData();
     void PopulateCommandList();

@@ -1569,6 +1569,30 @@ D3D12_CPU_DESCRIPTOR_HANDLE D3D12HelloTexture::ResolveDsv(DsvKey key) const
     }
 }
 
+DescriptorHeapHandle D3D12HelloTexture::ResolveDescriptor(DescriptorKey key) const
+{
+    switch (key)
+    {
+    case DescriptorKey::TextureTable:
+        return m_textureTableStart;
+    case DescriptorKey::InstanceBufferSrv:
+        return m_frameResources[m_frameIndex].instanceBufferSrv;
+    case DescriptorKey::MaterialBufferSrv:
+        return m_materialBufferSrv;
+    case DescriptorKey::CameraCbv:
+        return m_frameResources[m_frameIndex].cameraCB.cbv;
+    case DescriptorKey::LightCbv:
+        return m_frameResources[m_frameIndex].lightCB.cbv;
+    case DescriptorKey::GBufferAlbedoSrv:
+        return m_gbuffer.srvHandles[GBuffer::Albedo];
+    case DescriptorKey::ToneMapSceneColorSrv:
+        return m_toneMapPass.sceneColorSrv;
+    default:
+        assert(false && "Unsupported descriptor key.");
+        return {};
+    }
+}
+
 void D3D12HelloTexture::CreateDepthStencil(UINT width, UINT height)
 {
     // Release if DS exist
@@ -2051,8 +2075,8 @@ void D3D12HelloTexture::BuildRenderPasses()
     AddPass(L"Depth PrePass", PipelineKey::DepthPrePass, {},
             MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             {
-                {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
-                {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv},
+                {RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
+                {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
             },
             {{}, DsvKey::Depth}, PassOperation::DepthPrePass);
     AddPass(L"GBufferPass", PipelineKey::GBuffer,
@@ -2062,10 +2086,10 @@ void D3D12HelloTexture::BuildRenderPasses()
                                 {kGBufferResourceNames[GBuffer::Material], D3D12_RESOURCE_STATE_RENDER_TARGET},
                                 {kGBufferResourceNames[GBuffer::MotionVector], D3D12_RESOURCE_STATE_RENDER_TARGET},
                                 {kGBufferResourceNames[GBuffer::PBRParams], D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-            {{RootParam_TextureTable, m_textureTableStart},
-             {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
-             {RootParam_MaterialSrv, m_materialBufferSrv},
-             {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv}},
+            {{RootParam_TextureTable, DescriptorKey::TextureTable},
+             {RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
+             {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
             {{RtvKey::GBufferAlbedo, RtvKey::GBufferNormal, RtvKey::GBufferMaterial, RtvKey::GBufferMotionVector,
               RtvKey::GBufferPBRParams},
              DsvKey::Depth},
@@ -2074,26 +2098,27 @@ void D3D12HelloTexture::BuildRenderPasses()
     AddPass(L"MainPass", PipelineKey::Main,
             MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-            {{RootParam_TextureTable, m_textureTableStart},
-             {RootParam_InstanceSrv, m_frameResources[m_frameIndex].instanceBufferSrv},
-             {RootParam_MaterialSrv, m_materialBufferSrv},
-             {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv}},
+            {{RootParam_TextureTable, DescriptorKey::TextureTable},
+             {RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
+             {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
             {{RtvKey::BackBuffer}, DsvKey::Depth}, PassOperation::Main);
 #endif
     AddPass(L"LightPass",
             m_lightingPass.debugGradientEnabled ? PipelineKey::LightingDebugGradient : PipelineKey::Lighting,
             MakeGBufferReadUsages(),
             MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-            {{RootParam_GBufferSrvBase, m_gbuffer.srvHandles[GBuffer::Albedo]},
-             {RootParam_MaterialSrv, m_materialBufferSrv},
-             {RootParam_ConstantBuffer, m_frameResources[m_frameIndex].cameraCB.cbv},
-             {RootParam_LightConstants, m_frameResources[m_frameIndex].lightCB.cbv}},
+            {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv},
+             {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv},
+             {RootParam_LightConstants, DescriptorKey::LightCbv}},
             {{RtvKey::LightPass}, std::nullopt}, PassOperation::Lighting);
 
     AddPass(L"ToneMapPass", PipelineKey::ToneMap,
             MakeResourceUsages({{kLightPassRenderTargetResourceName, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE}}),
             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-            {{RootParam_ToneMapSceneColor, m_toneMapPass.sceneColorSrv}}, {{RtvKey::BackBuffer}, std::nullopt},
+            {{RootParam_ToneMapSceneColor, DescriptorKey::ToneMapSceneColorSrv}},
+            {{RtvKey::BackBuffer}, std::nullopt},
             PassOperation::ToneMap);
 
     if (m_debugViewSettings.requestHdrDump)
@@ -2142,7 +2167,7 @@ auto D3D12HelloTexture::MakeGBufferReadUsages() const -> ResourceUsages
 
 auto D3D12HelloTexture::MakeGBufferSrvBindings() const -> std::vector<PassDescriptorBinding>
 {
-    return {{RootParam_GBufferSrvBase, m_gbuffer.srvHandles[GBuffer::Albedo]}};
+    return {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv}};
 }
 
 void D3D12HelloTexture::AnalyzeResourceLifetimes() { m_resourceRegistry.AnalyzeLifetimes(m_renderPasses); }
@@ -2160,7 +2185,8 @@ void D3D12HelloTexture::BindPassDescriptors(const RenderPass &pass)
 {
     for (const auto &binding : pass.descriptorBindings)
     {
-        m_commandList->SetGraphicsRootDescriptorTable(binding.rootParameterIndex, binding.handle.gpu);
+        m_commandList->SetGraphicsRootDescriptorTable(binding.rootParameterIndex,
+                                                      ResolveDescriptor(binding.descriptor).gpu);
     }
 }
 
