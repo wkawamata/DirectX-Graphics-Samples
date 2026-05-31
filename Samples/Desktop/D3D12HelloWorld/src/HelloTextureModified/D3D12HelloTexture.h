@@ -581,6 +581,19 @@ class D3D12HelloTexture : public DXSample
         std::vector<PassDescriptorBinding> descriptorBindings;
         PassRenderTargetBinding renderTargets;
         PassOperation operation;
+
+        template <typename Func> void ForEachResourceUsage(Func func) const
+        {
+            for (const auto &[name, usage] : reads)
+            {
+                func(usage);
+            }
+
+            for (const auto &[name, usage] : writes)
+            {
+                func(usage);
+            }
+        }
     };
 
     struct ResourceRegistry

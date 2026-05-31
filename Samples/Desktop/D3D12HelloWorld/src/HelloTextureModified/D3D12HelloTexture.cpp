@@ -126,19 +126,12 @@ void D3D12HelloTexture::ResourceRegistry::AnalyzeLifetimes(const std::vector<Ren
     {
         const auto &pass = renderPasses[passIndex];
 
-        for (const auto &[name, usage] : pass.reads)
+        pass.ForEachResourceUsage([&](const ResourceUsage &usage)
         {
-            auto &lifetime = lifetimes[name];
+            auto &lifetime = lifetimes[usage.name];
             lifetime.firstPass = (std::min)(lifetime.firstPass, passIndex);
             lifetime.lastPass = (std::max)(lifetime.lastPass, passIndex);
-        }
-
-        for (const auto &[name, usage] : pass.writes)
-        {
-            auto &lifetime = lifetimes[name];
-            lifetime.firstPass = (std::min)(lifetime.firstPass, passIndex);
-            lifetime.lastPass = (std::max)(lifetime.lastPass, passIndex);
-        }
+        });
     }
 }
 
@@ -2092,8 +2085,7 @@ void D3D12HelloTexture::BuildRenderPasses()
         AddPass(L"GBufferDebugPass", PipelineKey::GBufferDebug, MakeGBufferReadUsageMap(),
                 MakeResourceUsageMap({{kBackBufferResourceName, m_renderTargets[m_frameIndex].Get(),
                                        D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-                MakeGBufferSrvBindings(), {{GetBackBufferRtv()}, std::nullopt},
-                PassOperation::GBufferDebug);
+                MakeGBufferSrvBindings(), {{GetBackBufferRtv()}, std::nullopt}, PassOperation::GBufferDebug);
     }
 
     AddPass(L"ImGui", PipelineKey::None, {},
@@ -2103,8 +2095,7 @@ void D3D12HelloTexture::BuildRenderPasses()
 }
 
 void D3D12HelloTexture::AddPass(const wchar_t *name, PipelineKey pipeline, ResourceUsageMap reads,
-                                ResourceUsageMap writes,
-                                std::vector<PassDescriptorBinding> descriptorBindings,
+                                ResourceUsageMap writes, std::vector<PassDescriptorBinding> descriptorBindings,
                                 PassRenderTargetBinding renderTargets, PassOperation operation)
 {
     m_renderPasses.push_back({name, pipeline, std::move(reads), std::move(writes), std::move(descriptorBindings),
@@ -2361,15 +2352,7 @@ void D3D12HelloTexture::ResetResourceStates()
 
 void D3D12HelloTexture::TransitionPassResources(const RenderPass &pass)
 {
-    for (const auto &read : pass.reads)
-    {
-        TransitionResource(read.second);
-    }
-
-    for (const auto &write : pass.writes)
-    {
-        TransitionResource(write.second);
-    }
+    pass.ForEachResourceUsage([this](const ResourceUsage &usage) { TransitionResource(usage); });
 }
 
 void D3D12HelloTexture::TransitionResource(const ResourceUsage &usage)
