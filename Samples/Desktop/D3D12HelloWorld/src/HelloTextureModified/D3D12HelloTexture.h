@@ -670,6 +670,9 @@ class D3D12HelloTexture : public DXSample
 
     void LoadPipeline();
     void LoadAssets();
+    void RegisterFullscreenPipeline(PipelineKey key, const D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
+                                    const UINT8 *vertexShader, UINT vertexShaderSize, const UINT8 *pixelShader,
+                                    UINT pixelShaderSize, DXGI_FORMAT renderTargetFormat);
     void UpdateHdr10DisplayMode();
     void InitImGui();
     void CreateConstantBuffer(ConstantBufferResource &constantBuffer, const void *initialData, UINT sizeInBytes);

@@ -17,10 +17,10 @@
 
 #include "D3D12HelloTexture.h"
 
-#include <DirectXPackedVector.h>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <DirectXPackedVector.h>
 #include <windows.h>
 
 #include "GltfLoader.h"
@@ -868,29 +868,24 @@ void D3D12HelloTexture::LoadAssets()
         //
         // LightPass PSO
         //
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC lightPassPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
-            psoDesc, pLightPassVS, lightPassVSSize, pLightPassPS, lightPassPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
-        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::Lighting, lightPassPSODesc);
+        RegisterFullscreenPipeline(PipelineKey::Lighting, psoDesc, pLightPassVS, lightPassVSSize, pLightPassPS,
+                                   lightPassPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
 
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC lightPassDebugGradientPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
-            psoDesc, pLightPassDebugGradientVS, lightPassDebugGradientVSSize, pLightPassDebugGradientPS,
-            lightPassDebugGradientPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
-        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::LightingDebugGradient, lightPassDebugGradientPSODesc);
+        RegisterFullscreenPipeline(PipelineKey::LightingDebugGradient, psoDesc, pLightPassDebugGradientVS,
+                                   lightPassDebugGradientVSSize, pLightPassDebugGradientPS,
+                                   lightPassDebugGradientPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
 
         //
         // ToneMap PSO
         //
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC toneMapPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
-            psoDesc, pToneMapVS, toneMapVSSize, pToneMapPS, toneMapPSSize, m_backBufferFormat);
-        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::ToneMap, toneMapPSODesc);
+        RegisterFullscreenPipeline(PipelineKey::ToneMap, psoDesc, pToneMapVS, toneMapVSSize, pToneMapPS, toneMapPSSize,
+                                   m_backBufferFormat);
 
         //
         // GBuffer Debug PSO
         //
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC gbufferDebugPSODesc = MyDx12Util::CreateFullscreenPassPSODesc(
-            psoDesc, pGBufferDebugVS, gbufferDebugVSSize, pGBufferDebugPS, gbufferDebugPSSize,
-            DXGI_FORMAT_R16G16B16A16_FLOAT);
-        m_pipelineRegistry.Create(m_device.Get(), PipelineKey::GBufferDebug, gbufferDebugPSODesc);
+        RegisterFullscreenPipeline(PipelineKey::GBufferDebug, psoDesc, pGBufferDebugVS, gbufferDebugVSSize,
+                                   pGBufferDebugPS, gbufferDebugPSSize, DXGI_FORMAT_R16G16B16A16_FLOAT);
 
         //
         // Depth PrePass PSO
@@ -2059,6 +2054,16 @@ void D3D12HelloTexture::OnDestroy()
     CloseHandle(m_fenceEvent);
 }
 
+void D3D12HelloTexture::RegisterFullscreenPipeline(PipelineKey key, const D3D12_GRAPHICS_PIPELINE_STATE_DESC &baseDesc,
+                                                   const UINT8 *vertexShader, UINT vertexShaderSize,
+                                                   const UINT8 *pixelShader, UINT pixelShaderSize,
+                                                   DXGI_FORMAT renderTargetFormat)
+{
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = MyDx12Util::CreateFullscreenPassPSODesc(
+        baseDesc, vertexShader, vertexShaderSize, pixelShader, pixelShaderSize, renderTargetFormat);
+    m_pipelineRegistry.Create(m_device.Get(), key, desc);
+}
+
 void D3D12HelloTexture::PopulateCommandList()
 {
     PIXBeginEvent(1, L"PopulateCommandList");
@@ -2576,8 +2581,8 @@ void D3D12HelloTexture::BeginFrame()
     // However, when ExecuteCommandList() is called on a particular command
     // list, that command list can then be reset at any time and must be before
     // re-recording.
-    ThrowIfFailed(
-        m_commandList->Reset(m_frameResources[m_frameIndex].commandAllocator.Get(), GetPipelineState(PipelineKey::Main)));
+    ThrowIfFailed(m_commandList->Reset(m_frameResources[m_frameIndex].commandAllocator.Get(),
+                                       GetPipelineState(PipelineKey::Main)));
 
     // Set necessary state.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
