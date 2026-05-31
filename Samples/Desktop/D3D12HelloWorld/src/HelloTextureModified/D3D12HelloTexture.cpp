@@ -2087,38 +2087,9 @@ void D3D12HelloTexture::BuildRenderPasses()
 {
     m_renderPasses.clear();
 
-    AddPass({L"Clear",
-             PipelineKey::None,
-             {},
-             MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET},
-                                 {kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-             {},
-             {{RtvKey::BackBuffer}, DsvKey::Depth, m_backBufferClearColor},
-             PassOperation::Clear});
-    AddPass({L"Depth PrePass",
-             PipelineKey::DepthPrePass,
-             {},
-             MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-             {{RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
-              {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
-             {{}, DsvKey::Depth},
-             PassOperation::DepthPrePass});
-    AddPass({L"GBufferPass",
-             PipelineKey::GBuffer,
-             MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
-             MakeResourceUsages({{kGBufferResourceNames[GBuffer::Albedo], D3D12_RESOURCE_STATE_RENDER_TARGET},
-                                 {kGBufferResourceNames[GBuffer::Normal], D3D12_RESOURCE_STATE_RENDER_TARGET},
-                                 {kGBufferResourceNames[GBuffer::Material], D3D12_RESOURCE_STATE_RENDER_TARGET},
-                                 {kGBufferResourceNames[GBuffer::MotionVector], D3D12_RESOURCE_STATE_RENDER_TARGET},
-                                 {kGBufferResourceNames[GBuffer::PBRParams], D3D12_RESOURCE_STATE_RENDER_TARGET}}),
-             {{RootParam_TextureTable, DescriptorKey::TextureTable},
-              {RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
-              {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
-              {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
-             {{RtvKey::GBufferAlbedo, RtvKey::GBufferNormal, RtvKey::GBufferMaterial, RtvKey::GBufferMotionVector,
-               RtvKey::GBufferPBRParams},
-              DsvKey::Depth},
-             PassOperation::GBuffer});
+    AddPass(MakeClearPass());
+    AddPass(MakeDepthPrePass());
+    AddPass(MakeGBufferPass());
 #if 0
     AddPass({L"MainPass",
              PipelineKey::Main,
@@ -2182,6 +2153,50 @@ auto D3D12HelloTexture::MakeGBufferReadUsages() const -> ResourceUsages
 auto D3D12HelloTexture::MakeGBufferSrvBindings() const -> std::vector<PassDescriptorBinding>
 {
     return {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv}};
+}
+
+auto D3D12HelloTexture::MakeClearPass() const -> RenderPass
+{
+    return {L"Clear",
+            PipelineKey::None,
+            {},
+            MakeResourceUsages({{kBackBufferResourceName, D3D12_RESOURCE_STATE_RENDER_TARGET},
+                                {kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
+            {},
+            {{RtvKey::BackBuffer}, DsvKey::Depth, m_backBufferClearColor},
+            PassOperation::Clear};
+}
+
+auto D3D12HelloTexture::MakeDepthPrePass() const -> RenderPass
+{
+    return {L"Depth PrePass",
+            PipelineKey::DepthPrePass,
+            {},
+            MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
+            {{RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
+            {{}, DsvKey::Depth},
+            PassOperation::DepthPrePass};
+}
+
+auto D3D12HelloTexture::MakeGBufferPass() const -> RenderPass
+{
+    return {L"GBufferPass",
+            PipelineKey::GBuffer,
+            MakeResourceUsages({{kDepthStencilResourceName, D3D12_RESOURCE_STATE_DEPTH_WRITE}}),
+            MakeResourceUsages({{kGBufferResourceNames[GBuffer::Albedo], D3D12_RESOURCE_STATE_RENDER_TARGET},
+                                {kGBufferResourceNames[GBuffer::Normal], D3D12_RESOURCE_STATE_RENDER_TARGET},
+                                {kGBufferResourceNames[GBuffer::Material], D3D12_RESOURCE_STATE_RENDER_TARGET},
+                                {kGBufferResourceNames[GBuffer::MotionVector], D3D12_RESOURCE_STATE_RENDER_TARGET},
+                                {kGBufferResourceNames[GBuffer::PBRParams], D3D12_RESOURCE_STATE_RENDER_TARGET}}),
+            {{RootParam_TextureTable, DescriptorKey::TextureTable},
+             {RootParam_InstanceSrv, DescriptorKey::InstanceBufferSrv},
+             {RootParam_MaterialSrv, DescriptorKey::MaterialBufferSrv},
+             {RootParam_ConstantBuffer, DescriptorKey::CameraCbv}},
+            {{RtvKey::GBufferAlbedo, RtvKey::GBufferNormal, RtvKey::GBufferMaterial, RtvKey::GBufferMotionVector,
+              RtvKey::GBufferPBRParams},
+             DsvKey::Depth},
+            PassOperation::GBuffer};
 }
 
 auto D3D12HelloTexture::MakeLightingPass() const -> RenderPass
