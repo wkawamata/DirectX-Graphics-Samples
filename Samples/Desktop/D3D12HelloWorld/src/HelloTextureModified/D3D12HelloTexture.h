@@ -680,6 +680,7 @@ class D3D12HelloTexture : public DXSample
     ID3D12PipelineState *GetPipelineState(PipelineKey pipeline) const;
     void TransitionPassResources(const RenderPass &pass);
     void TransitionResource(const ResourceUsage &usage);
+    ID3D12Resource *ResolveResource(const std::string &name) const;
 
     D3D12_RESOURCE_STATES GetResourceState(const std::string &name) const;
     void SetResourceState(const std::string &name, D3D12_RESOURCE_STATES state);

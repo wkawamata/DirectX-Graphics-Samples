@@ -2357,10 +2357,10 @@ void D3D12HelloTexture::TransitionResource(const ResourceUsage &usage)
         return;
     }
 
-    ID3D12Resource *resource = usage.resource;
+    ID3D12Resource *resource = ResolveResource(usage.name);
     if (resource == nullptr)
     {
-        resource = m_resourceRegistry.FindTransientD3DResource(usage.name);
+        resource = usage.resource;
     }
 
     assert(resource != nullptr && "Cannot transition a null resource.");
@@ -2372,6 +2372,34 @@ void D3D12HelloTexture::TransitionResource(const ResourceUsage &usage)
 
     m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(resource, currentState, usage.state));
     SetResourceState(usage.name, usage.state);
+}
+
+ID3D12Resource *D3D12HelloTexture::ResolveResource(const std::string &name) const
+{
+    if (name == kBackBufferResourceName)
+    {
+        return m_renderTargets[m_frameIndex].Get();
+    }
+
+    if (name == kDepthStencilResourceName)
+    {
+        return m_depthStencil.Get();
+    }
+
+    if (name == kLightPassRenderTargetResourceName)
+    {
+        return m_lightPassRenderTarget.Get();
+    }
+
+    for (UINT i = 0; i < GBuffer::kCount; ++i)
+    {
+        if (name == kGBufferResourceNames[i])
+        {
+            return m_gbuffer.resources[i].Get();
+        }
+    }
+
+    return m_resourceRegistry.FindTransientD3DResource(name);
 }
 
 D3D12_RESOURCE_STATES D3D12HelloTexture::GetResourceState(const std::string &name) const
