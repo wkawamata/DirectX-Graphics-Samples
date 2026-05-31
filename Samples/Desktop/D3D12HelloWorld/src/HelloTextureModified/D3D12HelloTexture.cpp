@@ -118,6 +118,22 @@ void D3D12HelloTexture::LightingPass::Record(ID3D12GraphicsCommandList *commandL
     commandList->DrawInstanced(3, 1, 0, 0);
 }
 
+void D3D12HelloTexture::PipelineRegistry::Register(PipelineKey key, ID3D12PipelineState *pipelineState)
+{
+    pipelines[key] = pipelineState;
+}
+
+ID3D12PipelineState *D3D12HelloTexture::PipelineRegistry::Find(PipelineKey key) const
+{
+    if (key == PipelineKey::None)
+    {
+        return nullptr;
+    }
+
+    auto pipeline = pipelines.find(key);
+    return pipeline != pipelines.end() ? pipeline->second : nullptr;
+}
+
 void D3D12HelloTexture::ResourceRegistry::AnalyzeLifetimes(const std::vector<RenderPass> &renderPasses)
 {
     lifetimes.clear();
@@ -914,6 +930,7 @@ void D3D12HelloTexture::LoadAssets()
         depthPSODesc.NumRenderTargets = 0;                                          // 重要
         ThrowIfFailed(m_device->CreateGraphicsPipelineState(&depthPSODesc, IID_PPV_ARGS(&m_depthPrePassPSO)));
     }
+    RegisterPipelineStates();
 
     //
     CreateGBuffer();
@@ -2170,6 +2187,17 @@ auto D3D12HelloTexture::MakeGBufferSrvBindings() const -> std::vector<PassDescri
     return {{RootParam_GBufferSrvBase, DescriptorKey::GBufferAlbedoSrv}};
 }
 
+void D3D12HelloTexture::RegisterPipelineStates()
+{
+    m_pipelineRegistry.Register(PipelineKey::Main, m_pipelineState.Get());
+    m_pipelineRegistry.Register(PipelineKey::DepthPrePass, m_depthPrePassPSO.Get());
+    m_pipelineRegistry.Register(PipelineKey::GBuffer, m_gbufferPSO.Get());
+    m_pipelineRegistry.Register(PipelineKey::Lighting, m_lightingPass.pipelineState.Get());
+    m_pipelineRegistry.Register(PipelineKey::LightingDebugGradient, m_lightingPass.debugGradientPipelineState.Get());
+    m_pipelineRegistry.Register(PipelineKey::ToneMap, m_toneMapPass.pipelineState.Get());
+    m_pipelineRegistry.Register(PipelineKey::GBufferDebug, m_gbufferDebugPSO.Get());
+}
+
 void D3D12HelloTexture::AnalyzeResourceLifetimes() { m_resourceRegistry.AnalyzeLifetimes(m_renderPasses); }
 
 void D3D12HelloTexture::DebugPrintLifetimes()
@@ -2213,33 +2241,13 @@ void D3D12HelloTexture::BindPassRenderTargets(const RenderPass &pass)
 
 ID3D12PipelineState *D3D12HelloTexture::GetPipelineState(PipelineKey pipeline) const
 {
-    switch (pipeline)
-    {
-    case PipelineKey::None:
-        return nullptr;
-    case PipelineKey::Main:
-        return m_pipelineState.Get();
-    case PipelineKey::DepthPrePass:
-        return m_depthPrePassPSO.Get();
-    case PipelineKey::GBuffer:
-        return m_gbufferPSO.Get();
-    case PipelineKey::Lighting:
-        return m_lightingPass.pipelineState.Get();
-    case PipelineKey::LightingDebugGradient:
-        return m_lightingPass.debugGradientPipelineState.Get();
-    case PipelineKey::ToneMap:
-        return m_toneMapPass.pipelineState.Get();
-    case PipelineKey::GBufferDebug:
-        return m_gbufferDebugPSO.Get();
-    default:
-        assert(false && "Unsupported pipeline key.");
-        return nullptr;
-    }
+    return m_pipelineRegistry.Find(pipeline);
 }
 
 void D3D12HelloTexture::BindPassPipeline(const RenderPass &pass)
 {
     ID3D12PipelineState *pipelineState = GetPipelineState(pass.pipeline);
+    assert(pass.pipeline == PipelineKey::None || pipelineState != nullptr);
     if (pipelineState != nullptr)
     {
         m_commandList->SetPipelineState(pipelineState);

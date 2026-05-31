@@ -367,6 +367,26 @@ class D3D12HelloTexture : public DXSample
         }
     };
 
+    enum class PipelineKey
+    {
+        None,
+        Main,
+        DepthPrePass,
+        GBuffer,
+        Lighting,
+        LightingDebugGradient,
+        ToneMap,
+        GBufferDebug,
+    };
+
+    struct PipelineRegistry
+    {
+        std::unordered_map<PipelineKey, ID3D12PipelineState *> pipelines;
+
+        void Register(PipelineKey key, ID3D12PipelineState *pipelineState);
+        ID3D12PipelineState *Find(PipelineKey key) const;
+    };
+
     // Pipeline objects.
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
@@ -399,6 +419,7 @@ class D3D12HelloTexture : public DXSample
     ComPtr<ID3D12PipelineState> m_gbufferDebugPSO;
     LightingPass m_lightingPass;
     ToneMapPass m_toneMapPass;
+    PipelineRegistry m_pipelineRegistry;
 
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
     UINT m_rtvDescriptorSize;
@@ -586,18 +607,6 @@ class D3D12HelloTexture : public DXSample
         ImGui,
     };
 
-    enum class PipelineKey
-    {
-        None,
-        Main,
-        DepthPrePass,
-        GBuffer,
-        Lighting,
-        LightingDebugGradient,
-        ToneMap,
-        GBufferDebug,
-    };
-
     struct RenderPass
     {
         const wchar_t *name;
@@ -681,6 +690,7 @@ class D3D12HelloTexture : public DXSample
     ResourceUsages MakeGBufferReadUsages() const;
     std::vector<PassDescriptorBinding> MakeGBufferSrvBindings() const;
     void BuildRenderPasses();
+    void RegisterPipelineStates();
     void AnalyzeResourceLifetimes();
     void DebugPrintLifetimes();
     void ExecutePasses();
