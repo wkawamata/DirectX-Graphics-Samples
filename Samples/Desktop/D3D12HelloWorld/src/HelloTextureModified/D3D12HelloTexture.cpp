@@ -2099,18 +2099,23 @@ void D3D12HelloTexture::AddSceneRenderPasses()
     else
     {
         AddPass(MakeGBufferPass());
-        if (m_debugViewSettings.IsGBufferDebugView())
-        {
-            AddPass(MakeGBufferDebugPass());
-        }
-        else if (m_lightingPassDebugGradientEnabled)
-        {
-            AddPass(MakeLightingDebugGradientPass());
-        }
-        else
-        {
-            AddPass(MakeLightingPass());
-        }
+        AddDeferredSceneOutputPass();
+    }
+}
+
+void D3D12HelloTexture::AddDeferredSceneOutputPass()
+{
+    if (m_debugViewSettings.IsGBufferDebugView())
+    {
+        AddPass(MakeGBufferDebugPass());
+    }
+    else if (m_lightingPassDebugGradientEnabled)
+    {
+        AddPass(MakeLightingDebugGradientPass());
+    }
+    else
+    {
+        AddPass(MakeLightingPass());
     }
 }
 

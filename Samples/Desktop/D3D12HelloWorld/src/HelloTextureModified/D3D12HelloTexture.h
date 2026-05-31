@@ -704,6 +704,7 @@ class D3D12HelloTexture : public DXSample
     RenderPass MakeImGuiPass() const;
     void BuildRenderPasses();
     void AddSceneRenderPasses();
+    void AddDeferredSceneOutputPass();
     void AnalyzeResourceLifetimes();
     void DebugPrintLifetimes();
     void ExecutePasses();
