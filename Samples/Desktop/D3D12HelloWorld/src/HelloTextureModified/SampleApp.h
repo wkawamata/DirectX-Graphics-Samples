@@ -33,7 +33,7 @@ public:
 
 private:
     void LoadSceneAssets();
-    void DrawDebugUi(HelloTextureEngine::DebugUiContext& context);
+    void DrawDebugUi(const HelloTextureEngine::DebugUiContext& context);
     void InitInstanceData(const GltfMeshData& mesh);
     void UpdateInstanceData(float deltaTime);
 
@@ -59,6 +59,9 @@ private:
     bool m_lightingPassDebugGradient = false;
     std::array<float, 4> m_backBufferClearColor = {0.0f, 0.2f, 0.4f, 1.0f};
     HelloTextureEngine::CameraState m_camera;
+    HelloTextureEngine::ToneMapParams m_toneMapParams;
+    HelloTextureEngine::RenderViewMode m_renderViewMode = HelloTextureEngine::RenderViewMode::LightPass;
+    bool m_requestHdrDump = false;
 
     std::vector<HelloTextureEngine::InstanceData> m_instanceData;
     std::vector<InstanceDataForCPU> m_instanceDataForCPU;

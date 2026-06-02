@@ -26,7 +26,7 @@ void SampleApp::OnInit()
     LoadSceneAssets();
     InitInstanceData(m_mesh);
     m_engine.SetSceneMesh(&m_mesh);
-    m_engine.SetDebugUiHandler([this](HelloTextureEngine::DebugUiContext& context) { DrawDebugUi(context); });
+    m_engine.SetDebugUiHandler([this](const HelloTextureEngine::DebugUiContext& context) { DrawDebugUi(context); });
     m_engine.SetUseWarpDevice(m_useWarpDevice);
     m_engine.SetLightingParams(m_lightingParams);
     m_engine.SetRenderingPath(m_renderingPath);
@@ -35,6 +35,8 @@ void SampleApp::OnInit()
     m_engine.SetCameraState(m_camera);
     m_engine.SetInstanceData(m_instanceData);
     m_engine.SetDisplayInstanceCount(m_displayInstanceCount);
+    m_engine.SetToneMapParams(m_toneMapParams);
+    m_engine.SetRenderViewMode(m_renderViewMode);
     m_engine.OnInit();
 }
 
@@ -138,7 +140,7 @@ void SampleApp::LoadSceneAssets()
     assert(loaded);
 }
 
-void SampleApp::DrawDebugUi(HelloTextureEngine::DebugUiContext& context)
+void SampleApp::DrawDebugUi(const HelloTextureEngine::DebugUiContext& context)
 {
     using RenderingPath = HelloTextureEngine::RenderingPath;
     using RenderViewMode = HelloTextureEngine::RenderViewMode;
@@ -158,14 +160,14 @@ void SampleApp::DrawDebugUi(HelloTextureEngine::DebugUiContext& context)
     ImGui::SliderFloat("Diffuse", &m_lightingParams.diffuseIntensity, 0.0f, 4.0f);
 
     ImGui::Text("ToneMap");
-    ImGui::RadioButton("None", &context.toneMapOperator, 0);
+    ImGui::RadioButton("None", &m_toneMapParams.operatorIndex, 0);
     ImGui::SameLine();
-    ImGui::RadioButton("Reinhard", &context.toneMapOperator, 1);
+    ImGui::RadioButton("Reinhard", &m_toneMapParams.operatorIndex, 1);
     ImGui::SameLine();
-    ImGui::RadioButton("ACES", &context.toneMapOperator, 2);
-    ImGui::SliderFloat("Exposure", &context.exposure, 0.0f, 4.0f);
-    ImGui::SliderFloat("Paper White", &context.paperWhiteNits, 80.0f, 500.0f, "%.0f nits");
-    ImGui::SliderFloat("Display Max", &context.maxDisplayNits, 100.0f, 4000.0f, "%.0f nits");
+    ImGui::RadioButton("ACES", &m_toneMapParams.operatorIndex, 2);
+    ImGui::SliderFloat("Exposure", &m_toneMapParams.exposure, 0.0f, 4.0f);
+    ImGui::SliderFloat("Paper White", &m_toneMapParams.paperWhiteNits, 80.0f, 500.0f, "%.0f nits");
+    ImGui::SliderFloat("Display Max", &m_toneMapParams.maxDisplayNits, 100.0f, 4000.0f, "%.0f nits");
 
     int renderingPath = static_cast<int>(m_renderingPath);
     ImGui::Text("Rendering Path");
@@ -177,10 +179,10 @@ void SampleApp::DrawDebugUi(HelloTextureEngine::DebugUiContext& context)
     const bool deferredRendering = m_renderingPath == RenderingPath::Deferred;
     if (ImGui::Button("Dump HDR Buffers"))
     {
-        context.requestHdrDump = true;
+        m_requestHdrDump = true;
     }
 
-    int renderViewMode = static_cast<int>(context.renderViewMode);
+    int renderViewMode = static_cast<int>(m_renderViewMode);
     ImGui::Text("Render View");
     ImGui::BeginDisabled(!deferredRendering);
     ImGui::RadioButton("LightPass", &renderViewMode, static_cast<int>(RenderViewMode::LightPass));
@@ -194,10 +196,15 @@ void SampleApp::DrawDebugUi(HelloTextureEngine::DebugUiContext& context)
     ImGui::RadioButton("PBRParams", &renderViewMode, static_cast<int>(RenderViewMode::GBufferPBRParams));
     ImGui::SameLine();
     ImGui::RadioButton("Depth", &renderViewMode, static_cast<int>(RenderViewMode::Depth));
-    context.renderViewMode = static_cast<RenderViewMode>(renderViewMode);
+    m_renderViewMode = static_cast<RenderViewMode>(renderViewMode);
     ImGui::EndDisabled();
 
-    const bool lightPassView = deferredRendering && context.renderViewMode == RenderViewMode::LightPass;
+    if (!deferredRendering)
+    {
+        m_renderViewMode = RenderViewMode::LightPass;
+    }
+
+    const bool lightPassView = deferredRendering && m_renderViewMode == RenderViewMode::LightPass;
     ImGui::BeginDisabled(!lightPassView);
     ImGui::Checkbox("Debug LightPass Gradient", &m_lightingPassDebugGradient);
     ImGui::EndDisabled();
@@ -211,7 +218,6 @@ void SampleApp::DrawDebugUi(HelloTextureEngine::DebugUiContext& context)
         for (int i = 1; i < static_cast<int>(gpuCheckPointCount); i++)
         {
             const auto& checkPoint = gpuCheckPoints[i];
-
             if (i < static_cast<int>(gpuCheckPointCount) - 1)
             {
                 const float timeFromPrevious = checkPoint.timeStamp - gpuCheckPoints[i - 1].timeStamp;
@@ -232,6 +238,10 @@ void SampleApp::DrawDebugUi(HelloTextureEngine::DebugUiContext& context)
     m_engine.SetBackBufferClearColor(m_backBufferClearColor);
     m_engine.SetCameraState(m_camera);
     m_engine.SetDisplayInstanceCount(m_displayInstanceCount);
+    m_engine.SetToneMapParams(m_toneMapParams);
+    m_engine.SetRenderViewMode(m_renderViewMode);
+    m_engine.SetRequestHdrDump(m_requestHdrDump);
+    m_requestHdrDump = false;
 }
 
 XMFLOAT3 SampleApp::InstanceIdToXYZ(int instanceId)

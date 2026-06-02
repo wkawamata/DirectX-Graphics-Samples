@@ -164,6 +164,24 @@ void HelloTextureEngine::SetDisplayInstanceCount(int count)
     m_displayInstanceCount = std::clamp(count, 0, static_cast<int>(kMaxInstanceCount));
 }
 
+void HelloTextureEngine::SetToneMapParams(const ToneMapParams& params)
+{
+    m_toneMapPass.settings.operatorIndex = params.operatorIndex;
+    m_toneMapPass.settings.exposure = params.exposure;
+    m_toneMapPass.settings.paperWhiteNits = params.paperWhiteNits;
+    m_toneMapPass.settings.maxDisplayNits = params.maxDisplayNits;
+}
+
+void HelloTextureEngine::SetRenderViewMode(RenderViewMode mode)
+{
+    m_debugViewSettings.renderViewMode = mode;
+}
+
+void HelloTextureEngine::SetRequestHdrDump(bool request)
+{
+    m_debugViewSettings.requestHdrDump = request;
+}
+
 void HelloTextureEngine::UpdateCameraConstantBuffer()
 {
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
@@ -1480,21 +1498,11 @@ void HelloTextureEngine::UpdateImGui()
     {
         DebugUiContext context{
             static_cast<int>(m_frameIndex),
-            m_toneMapPass.settings.operatorIndex,
-            m_toneMapPass.settings.exposure,
-            m_toneMapPass.settings.paperWhiteNits,
-            m_toneMapPass.settings.maxDisplayNits,
-            m_debugViewSettings.renderViewMode,
-            m_debugViewSettings.requestHdrDump,
             m_cpuFrameTime,
             m_frameResources[m_fremeIndexPrevious].gpuWorkMeterCheckPoints};
         m_debugUiHandler(context);
     }
 
-    if (m_renderingPath != RenderingPath::Deferred)
-    {
-        m_debugViewSettings.renderViewMode = RenderViewMode::LightPass;
-    }
     m_toneMapPass.settings.Normalize();
     const LightingConstants lightingConstants = MakeLightingConstants();
     memcpy(m_frameResources[m_frameIndex].lightCB.mappedData, &lightingConstants, sizeof(lightingConstants));

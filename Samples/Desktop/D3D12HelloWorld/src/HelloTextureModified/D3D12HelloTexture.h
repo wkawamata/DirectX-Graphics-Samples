@@ -88,20 +88,22 @@ public:
         UINT materialId;
     };
 
+    struct ToneMapParams
+    {
+        int operatorIndex = 0; // 0: None, 1: Reinhard, 2: ACES
+        float exposure = 1.0f;
+        float paperWhiteNits = 300.0f;
+        float maxDisplayNits = 1000.0f;
+    };
+
     struct DebugUiContext
     {
         int frameIndex;
-        int& toneMapOperator;
-        float& exposure;
-        float& paperWhiteNits;
-        float& maxDisplayNits;
-        RenderViewMode& renderViewMode;
-        bool& requestHdrDump;
         float cpuFrameTime;
         const std::vector<MyDx12Util::GpuWorkMeter::CheckPoint>& gpuCheckPoints;
     };
 
-    using DebugUiHandler = std::function<void(DebugUiContext&)>;
+    using DebugUiHandler = std::function<void(const DebugUiContext&)>;
 
     HelloTextureEngine(UINT width, UINT height, std::wstring name);
 
@@ -124,6 +126,9 @@ public:
     void SetCameraState(const CameraState& camera);
     void SetInstanceData(const std::vector<InstanceData>& instanceData);
     void SetDisplayInstanceCount(int count);
+    void SetToneMapParams(const ToneMapParams& params);
+    void SetRenderViewMode(RenderViewMode mode);
+    void SetRequestHdrDump(bool request);
 
 private:
     static constexpr UINT kFrameCount = 2;
