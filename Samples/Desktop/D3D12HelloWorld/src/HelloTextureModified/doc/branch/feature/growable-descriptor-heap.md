@@ -80,9 +80,11 @@ enum PersistentSrvSlot : UINT
 - **GPU heap** (`D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE`): 毎フレーム `CopyDescriptorsSimple` で CPU から全コピー。
 
 ```cpp
-StagedDescriptorHandle Allocate();  // 1 slot 確保
-void Stage();                        // 毎フレーム1回: CPU → GPU コピー
-void Free(StagedDescriptorHandle);   // slot を解放
+StagedDescriptorHandle Allocate();             // 1 slot 確保
+StagedDescriptorHandle AllocContiguous(count); // count 連続 slot 確保
+void Stage(completedFenceValue);               // CPU → GPU コピー + 古い GPU heap 解放
+void Free(StagedDescriptorHandle);             // slot を解放
+void SetPendingFenceValue(value);              // 次回 Grow に備えて fence value を記録
 ```
 
 #### Grow 動作
@@ -92,10 +94,44 @@ void Free(StagedDescriptorHandle);   // slot を解放
 2. 既存の記述子を古い CPU heap から新しい CPU heap へコピー
 3. 新しい GPU heap にも同様にコピー
 4. 新しい空きスロットを FreeIndices に追加
-5. 古いヒープを解放
+5. 古い GPU heap を pending list に移行（即時解放しない）
+6. `Stage(completedFenceValue)` で fence 完了後に pending list から解放
+
+#### Review 対応
+
+Review (`growable-descriptor-heap-review-cc4f63fed3b3.md`) 指摘に基づく修正:
+
+##### 1. `StagedDescriptorHandle` を slot-only に変更
+
+従来は handle が CPU/GPU 絶対アドレスをキャッシュしていたが、Grow 後に stale になるため廃止。
+Handle は `Index` のみ保持し、CPU/GPU handle は `CpuHandle(slot)` / `GpuHandle(slot)` accessor で都度解決する。
+
+```cpp
+StagedDescriptorHandle h = alloc.Allocate();
+D3D12_CPU_DESCRIPTOR_HANDLE cpu = alloc.CpuHandle(h.Index);
+D3D12_GPU_DESCRIPTOR_HANDLE gpu = alloc.GpuHandle(h.Index);
+```
+
+##### 2. 古い GPU heap の deferred release
+
+`Grow()` で旧 GPU heap を `m_pendingGpuHeaps` に fence value 付きで退避。
+`Stage(completedFenceValue)` 呼び出し時に fence 完了済みの pending heap を解放。
+`SetPendingFenceValue(value)` で次回 Grow に使う fence value を事前登録する。
+
+##### 3. Smoke test を `_DEBUG` 限定に移行
+
+`InitializeFrameResources()` 内の呼び出しを `#if defined(_DEBUG)` でガード。
+Release ビルドではテストは実行されない。
+
+##### 4. `AllocContiguous(count)` の追加
+
+連続 `count` 個の descriptor slot を1回の呼び出しで確保（descriptor table 用）。
+内部で free list をソートして連続領域を探索。見つからなければ Grow してから再試行。
 
 #### Smoke test
 
 `Renderer/StagedDescriptorAllocator_Test.cpp` に単体テストを実装。
-`InitializeFrameResources()` 内で起動時に1回実行。
-テスト内容: 確保・解放・再利用・Grow・Stage を検証。
+Debug ビルド時に起動後に1回実行。
+テスト内容:
+- 確保・解放・再利用・Grow・Stage の基本動作
+- `AllocContiguous()` の連続確保と断片化後の動作
