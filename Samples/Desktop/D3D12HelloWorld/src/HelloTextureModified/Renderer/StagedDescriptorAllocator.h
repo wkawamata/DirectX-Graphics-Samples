@@ -2,6 +2,7 @@
 
 #include "../DXSampleHelper.h"
 
+#include <algorithm>
 #include <cassert>
 #include <deque>
 #include <vector>
@@ -135,6 +136,40 @@ public:
                                         m_heapType);
     }
 
+    // Allocate a contiguous block of descriptor slots (for descriptor tables).
+    StagedDescriptorHandle AllocContiguous(UINT count)
+    {
+        assert(m_device != nullptr);
+        assert(count > 0);
+
+        UINT start = FindContiguousRun(count);
+        if (start == UINT_MAX)
+        {
+            UINT growSize = (std::max)(count, (std::max)(m_capacity, 64u));
+            Grow(growSize);
+            start = FindContiguousRun(count);
+            assert(start != UINT_MAX);
+        }
+
+        // Remove the allocated slots from the free list.
+        for (UINT i = 0; i < count; ++i)
+        {
+            auto it = std::find(m_freeIndices.begin(), m_freeIndices.end(), start + i);
+            assert(it != m_freeIndices.end());
+            *it = m_freeIndices.back();
+            m_freeIndices.pop_back();
+        }
+
+        if (start + count > m_maxUsedIndex)
+        {
+            m_maxUsedIndex = start + count;
+        }
+
+        StagedDescriptorHandle handle;
+        handle.Index = start;
+        return handle;
+    }
+
     // Compute the CPU descriptor handle for a logical slot.
     D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle(UINT slot) const
     {
@@ -233,6 +268,41 @@ private:
         m_cpuStart = m_cpuHeap->GetCPUDescriptorHandleForHeapStart();
         m_gpuStart = m_gpuHeap->GetGPUDescriptorHandleForHeapStart();
         m_capacity = newCapacity;
+    }
+
+    // Find the first contiguous run of `count` free slots.
+    // Returns UINT_MAX if no such run exists.
+    UINT FindContiguousRun(UINT count) const
+    {
+        if (m_freeIndices.size() < count)
+        {
+            return UINT_MAX;
+        }
+
+        std::vector<UINT> sorted = m_freeIndices;
+        std::sort(sorted.begin(), sorted.end());
+
+        UINT runStart = sorted[0];
+        UINT consecutive = 1;
+
+        for (size_t i = 1; i < sorted.size(); ++i)
+        {
+            if (sorted[i] == sorted[i - 1] + 1)
+            {
+                ++consecutive;
+                if (consecutive >= count)
+                {
+                    return sorted[i] - count + 1;
+                }
+            }
+            else
+            {
+                runStart = sorted[i];
+                consecutive = 1;
+            }
+        }
+
+        return UINT_MAX;
     }
 
     // Release old GPU heaps whose fence has been reached.
