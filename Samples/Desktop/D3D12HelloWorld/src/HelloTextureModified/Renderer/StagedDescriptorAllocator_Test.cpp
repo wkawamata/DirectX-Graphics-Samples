@@ -90,6 +90,14 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
     StagedDescriptorAllocator alloc;
     alloc.Init(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 8);
 
+    // AllocContiguous(1) should work (edge case from review-3).
+    auto single = alloc.AllocContiguous(1, UINT64_MAX);
+    if (!single.IsValid())
+    {
+        printf("FAIL: AllocContiguous(1) returned invalid handle\n");
+        return false;
+    }
+
     // Allocate a block of 3 contiguous slots.
     auto block = alloc.AllocContiguous(3, UINT64_MAX);
     if (!block.IsValid())
@@ -105,17 +113,17 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
         return false;
     }
 
-    // Verify the three slots are actually consecutive by checking CPU handle spacing.
+    // Verify the slots (including the single slot) are consecutive.
     UINT inc = alloc.DescriptorIncrement();
+    D3D12_CPU_DESCRIPTOR_HANDLE base3 = alloc.CpuHandle(block.Index);
     for (UINT i = 1; i < 3; ++i)
     {
-        D3D12_CPU_DESCRIPTOR_HANDLE base = alloc.CpuHandle(block.Index);
         D3D12_CPU_DESCRIPTOR_HANDLE slot = alloc.CpuHandle(block.Index + i);
-        if (slot.ptr != base.ptr + i * inc)
+        if (slot.ptr != base3.ptr + i * inc)
         {
             printf("FAIL: Contiguous block slot %u not at expected offset "
                    "(expected %llu, got %llu)\n",
-                   i, base.ptr + i * inc, slot.ptr);
+                   i, (unsigned long long)(base3.ptr + i * inc), (unsigned long long)slot.ptr);
             return false;
         }
     }
@@ -141,13 +149,9 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
         }
     }
 
-    // Free the contiguous block and verify the slots go back to the free list.
-    StagedDescriptorHandle freeBlock = block;
-    for (UINT i = 0; i < 3; ++i)
-    {
-        freeBlock.Index = block.Index + i;
-        alloc.Free(freeBlock);
-    }
+    // Free the contiguous block via FreeContiguous and verify the slots
+    // go back to the free list.
+    alloc.FreeContiguous(block, 3);
 
     // The freed contiguous range should now be reusable by a single AllocContiguous.
     auto block3 = alloc.AllocContiguous(3, UINT64_MAX);
