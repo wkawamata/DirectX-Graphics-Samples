@@ -305,8 +305,6 @@ private:
 
     static constexpr int kGpuWorkMeterQueryCount = 100;
 
-    static constexpr int kGpuWorkMeterQueryCount = 100;
-
     struct alignas(256) ConstantBuffer
     {
         XMFLOAT4X4 viewProjection;
