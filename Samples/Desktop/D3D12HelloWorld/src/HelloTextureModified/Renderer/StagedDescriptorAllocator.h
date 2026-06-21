@@ -5,14 +5,13 @@
 #include <cassert>
 #include <vector>
 
-// A handle that separates CPU and GPU descriptor heap addresses.
-// CPU handle points into the CPU-side heap (for writing descriptor contents).
-// GPU handle points into the shader-visible staging heap (for root descriptor tables).
+// A slot-only handle returned by StagedDescriptorAllocator::Allocate().
+// The Index is stable across Grow() calls; CPU/GPU descriptor handles
+// for a given slot are obtained via StagedDescriptorAllocator::CpuHandle() /
+// GpuHandle().
 struct StagedDescriptorHandle
 {
     UINT Index = UINT_MAX;
-    D3D12_CPU_DESCRIPTOR_HANDLE Cpu{};
-    D3D12_GPU_DESCRIPTOR_HANDLE Gpu{};
 
     bool IsValid() const
     {
@@ -32,8 +31,8 @@ struct StagedDescriptorHandle
 //     - Staging copy, refreshed each frame via CopyDescriptors.
 //     - Resized to match CPU heap when growing.
 //
-//   Allocate() returns a StagedDescriptorHandle whose Cpu/GPU handles
-//   point to the same logical index in their respective heaps.
+//   Allocate() returns a slot-only StagedDescriptorHandle.
+//   CPU/GPU descriptor handles are obtained via CpuHandle()/GpuHandle().
 //
 //   Stage() copies all currently allocated descriptors from CPU → GPU.
 //   Call once per frame before issuing draw/dispatch commands.
@@ -89,8 +88,6 @@ public:
 
         StagedDescriptorHandle handle;
         handle.Index = idx;
-        handle.Cpu.ptr = m_cpuStart.ptr + (idx * m_increment);
-        handle.Gpu.ptr = m_gpuStart.ptr + (idx * m_increment);
 
         if (idx >= m_maxUsedIndex)
         {
@@ -119,6 +116,22 @@ public:
                                         dstStart,
                                         srcStart,
                                         m_heapType);
+    }
+
+    // Compute the CPU descriptor handle for a logical slot.
+    D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle(UINT slot) const
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE h = {};
+        h.ptr = m_cpuStart.ptr + (slot * m_increment);
+        return h;
+    }
+
+    // Compute the GPU descriptor handle for a logical slot.
+    D3D12_GPU_DESCRIPTOR_HANDLE GpuHandle(UINT slot) const
+    {
+        D3D12_GPU_DESCRIPTOR_HANDLE h = {};
+        h.ptr = m_gpuStart.ptr + (slot * m_increment);
+        return h;
     }
 
     void Free(StagedDescriptorHandle handle)
