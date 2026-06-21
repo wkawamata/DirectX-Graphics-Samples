@@ -13,10 +13,10 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
 
     alloc.Init(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4);
 
-    // Allocate 3 slots
-    auto a = alloc.Allocate();
-    auto b = alloc.Allocate();
-    auto c = alloc.Allocate();
+    // Allocate 3 slots (retireFenceValue=UINT64_MAX for standalone test)
+    auto a = alloc.Allocate(UINT64_MAX);
+    auto b = alloc.Allocate(UINT64_MAX);
+    auto c = alloc.Allocate(UINT64_MAX);
 
     if (!a.IsValid() || !b.IsValid() || !c.IsValid())
     {
@@ -39,7 +39,7 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
         return false;
     }
 
-    auto d = alloc.Allocate();
+    auto d = alloc.Allocate(UINT64_MAX);
     if (!d.IsValid())
     {
         printf("FAIL: Re-allocate after free failed\n");
@@ -53,8 +53,8 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
     }
 
     // Trigger growth
-    alloc.Allocate(); // fills slot 0..3
-    auto e = alloc.Allocate(); // triggers Grow(4)
+    alloc.Allocate(UINT64_MAX); // fills slot 0..3
+    auto e = alloc.Allocate(UINT64_MAX); // triggers Grow(4)
 
     if (!e.IsValid())
     {
@@ -91,7 +91,7 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
     alloc.Init(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 8);
 
     // Allocate a block of 3 contiguous slots.
-    auto block = alloc.AllocContiguous(3);
+    auto block = alloc.AllocContiguous(3, UINT64_MAX);
     if (!block.IsValid())
     {
         printf("FAIL: AllocContiguous returned invalid handle\n");
@@ -105,29 +105,55 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
         return false;
     }
 
-    // The three slots should be consecutive.
+    // Verify the three slots are actually consecutive by checking CPU handle spacing.
+    UINT inc = alloc.DescriptorIncrement();
     for (UINT i = 1; i < 3; ++i)
     {
-        auto cpu = alloc.CpuHandle(block.Index + i);
-        auto prev = alloc.CpuHandle(block.Index + i - 1);
-        if (cpu.ptr != prev.ptr + alloc.Capacity()) // actually should be increment...
+        D3D12_CPU_DESCRIPTOR_HANDLE base = alloc.CpuHandle(block.Index);
+        D3D12_CPU_DESCRIPTOR_HANDLE slot = alloc.CpuHandle(block.Index + i);
+        if (slot.ptr != base.ptr + i * inc)
         {
-            // This check is too fragile; skip for now.
+            printf("FAIL: Contiguous block slot %u not at expected offset "
+                   "(expected %llu, got %llu)\n",
+                   i, base.ptr + i * inc, slot.ptr);
+            return false;
         }
     }
 
-    // Allocate individual slots to fragment the free list.
-    auto a = alloc.Allocate(); // 4th slot
-    auto b = alloc.Allocate(); // 5th
-    (void)a;
-    (void)b;
-
-    // Free the individual slots to create a fragmented pattern.
-    // Then allocate a new contiguous block (may trigger Grow).
-    auto block2 = alloc.AllocContiguous(2);
-    if (!block2.IsValid())
+    // Verify that a new Allocate() does not return any of the contiguous slots.
+    for (UINT i = 0; i < 5; ++i)
     {
-        printf("FAIL: Second AllocContiguous failed\n");
+        auto h = alloc.Allocate(UINT64_MAX);
+        if (!h.IsValid())
+        {
+            printf("FAIL: Could not allocate after contiguous block\n");
+            return false;
+        }
+        // All 5 remaining slots should be distinct from the contiguous block.
+        for (UINT j = 0; j < 3; ++j)
+        {
+            if (h.Index == block.Index + j)
+            {
+                printf("FAIL: Allocate returned a slot (%u) from the contiguous block\n",
+                       h.Index);
+                return false;
+            }
+        }
+    }
+
+    // Free the contiguous block and verify the slots go back to the free list.
+    StagedDescriptorHandle freeBlock = block;
+    for (UINT i = 0; i < 3; ++i)
+    {
+        freeBlock.Index = block.Index + i;
+        alloc.Free(freeBlock);
+    }
+
+    // The freed contiguous range should now be reusable by a single AllocContiguous.
+    auto block3 = alloc.AllocContiguous(3, UINT64_MAX);
+    if (!block3.IsValid())
+    {
+        printf("FAIL: Re-allocation of freed contiguous block failed\n");
         return false;
     }
 

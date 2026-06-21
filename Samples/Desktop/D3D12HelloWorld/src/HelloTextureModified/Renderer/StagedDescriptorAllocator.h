@@ -40,11 +40,11 @@ struct StagedDescriptorHandle
 //   from CPU → GPU and releases old GPU heaps whose fence has been reached.
 //   Call once per frame before issuing draw/dispatch commands.
 //
-//   SetPendingFenceValue(value) records the fence value to associate with
-//   the next Grow(). The old GPU heap will be retained via the pending list
-//   until completedFenceValue >= that value is passed to Stage().
+//   Allocate/AllocContiguous take a retireFenceValue parameter so the
+//   old GPU heap (if Grow is triggered) is retained until the fence completes.
 //
 //   Free() returns the logical index to the free list.
+//   In debug builds, double-free and out-of-range are detected via slot state tracking.
 class StagedDescriptorAllocator
 {
 public:
@@ -64,7 +64,9 @@ public:
         m_capacity = 0;
         m_maxUsedIndex = 0;
 
-        Grow(initialCapacity);
+        // Initialise with a dummy fence value; the first Grow will not have a
+        // previous GPU heap to defer, so the value doesn't matter.
+        Grow(initialCapacity, UINT64_MAX);
     }
 
     void Destroy()
@@ -77,29 +79,28 @@ public:
         m_increment = 0;
         m_maxUsedIndex = 0;
         m_freeIndices.clear();
-    }
-
-    // Record the fence value for the next Grow() so the old GPU heap
-    // is retained until the GPU has finished with it.
-    void SetPendingFenceValue(UINT64 value)
-    {
-        m_pendingFenceValue = value;
+        m_slotState.clear();
     }
 
     // Allocate one descriptor slot.
-    // Returns an invalid handle if the allocator is not initialised.
-    StagedDescriptorHandle Allocate()
+    // retireFenceValue is used if a Grow() is triggered, so the old GPU heap
+    // is retained until the fence completes.
+    StagedDescriptorHandle Allocate(UINT64 retireFenceValue)
     {
         assert(m_device != nullptr);
 
         if (m_freeIndices.empty())
         {
             UINT growSize = (std::max)(m_capacity, 64u);
-            Grow(growSize);
+            Grow(growSize, retireFenceValue);
         }
 
         UINT idx = m_freeIndices.back();
         m_freeIndices.pop_back();
+
+        assert(idx < m_slotState.size());
+        assert(m_slotState[idx] == SlotState::Free);
+        m_slotState[idx] = SlotState::Allocated;
 
         StagedDescriptorHandle handle;
         handle.Index = idx;
@@ -137,7 +138,9 @@ public:
     }
 
     // Allocate a contiguous block of descriptor slots (for descriptor tables).
-    StagedDescriptorHandle AllocContiguous(UINT count)
+    // retireFenceValue is used if a Grow() is triggered, so the old GPU heap
+    // is retained until the fence completes.
+    StagedDescriptorHandle AllocContiguous(UINT count, UINT64 retireFenceValue)
     {
         assert(m_device != nullptr);
         assert(count > 0);
@@ -146,18 +149,24 @@ public:
         if (start == UINT_MAX)
         {
             UINT growSize = (std::max)(count, (std::max)(m_capacity, 64u));
-            Grow(growSize);
+            Grow(growSize, retireFenceValue);
             start = FindContiguousRun(count);
             assert(start != UINT_MAX);
         }
 
-        // Remove the allocated slots from the free list.
+        // Remove the allocated slots from the free list and mark them allocated.
         for (UINT i = 0; i < count; ++i)
         {
-            auto it = std::find(m_freeIndices.begin(), m_freeIndices.end(), start + i);
+            UINT slot = start + i;
+            assert(slot < m_slotState.size());
+            assert(m_slotState[slot] == SlotState::Free);
+
+            auto it = std::find(m_freeIndices.begin(), m_freeIndices.end(), slot);
             assert(it != m_freeIndices.end());
             *it = m_freeIndices.back();
             m_freeIndices.pop_back();
+
+            m_slotState[slot] = SlotState::Allocated;
         }
 
         if (start + count > m_maxUsedIndex)
@@ -193,10 +202,15 @@ public:
             return;
         }
 
-        m_freeIndices.push_back(handle.Index);
+        UINT idx = handle.Index;
+        assert(idx < m_slotState.size());
+        assert(m_slotState[idx] == SlotState::Allocated);
+
+        m_slotState[idx] = SlotState::Free;
+        m_freeIndices.push_back(idx);
 
         // Shrink maxUsedIndex when the highest slot is freed (optimistic).
-        if (handle.Index + 1 == m_maxUsedIndex)
+        if (idx + 1 == m_maxUsedIndex)
         {
             while (m_maxUsedIndex > 0)
             {
@@ -213,9 +227,10 @@ public:
 
     UINT Capacity() const { return m_capacity; }
     UINT Used() const { return m_capacity - static_cast<UINT>(m_freeIndices.size()); }
+    UINT DescriptorIncrement() const { return m_increment; }
 
 private:
-    void Grow(UINT additionalSlots)
+    void Grow(UINT additionalSlots, UINT64 retireFenceValue)
     {
         UINT newCapacity = m_capacity + additionalSlots;
 
@@ -257,10 +272,13 @@ private:
             m_freeIndices.push_back(i);
         }
 
+        // Extend slot state tracking for new slots.
+        m_slotState.resize(newCapacity, SlotState::Free);
+
         // Defer-release old GPU heap so in-flight draws finish before destruction.
         if (m_gpuHeap != nullptr)
         {
-            m_pendingGpuHeaps.push_back({m_gpuHeap, m_pendingFenceValue});
+            m_pendingGpuHeaps.push_back({m_gpuHeap, retireFenceValue});
         }
 
         m_cpuHeap.Swap(newCpuHeap);
@@ -282,7 +300,6 @@ private:
         std::vector<UINT> sorted = m_freeIndices;
         std::sort(sorted.begin(), sorted.end());
 
-        UINT runStart = sorted[0];
         UINT consecutive = 1;
 
         for (size_t i = 1; i < sorted.size(); ++i)
@@ -297,7 +314,6 @@ private:
             }
             else
             {
-                runStart = sorted[i];
                 consecutive = 1;
             }
         }
@@ -330,9 +346,13 @@ private:
     // Highest index ever allocated + 1 (defines the copy range for Stage).
     UINT m_maxUsedIndex = 0;
 
+    enum class SlotState
+    {
+        Free,
+        Allocated,
+    };
+    std::vector<SlotState> m_slotState;
     std::vector<UINT> m_freeIndices;
-
-    UINT64 m_pendingFenceValue = 0;
 
     struct PendingGpuHeap
     {

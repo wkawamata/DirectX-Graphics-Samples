@@ -99,7 +99,7 @@ void SetPendingFenceValue(value);              // 次回 Grow に備えて fence
 
 #### Review 対応
 
-Review (`growable-descriptor-heap-review-cc4f63fed3b3.md`) 指摘に基づく修正:
+Review ([review-1](growable-descriptor-heap-review-1-cc4f63fed3b3.md)) / ([review-2](growable-descriptor-heap-review-2-a6cbc0a383ea.md)) 指摘に基づく修正:
 
 ##### 1. `StagedDescriptorHandle` を slot-only に変更
 
