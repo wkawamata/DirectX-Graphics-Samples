@@ -21,6 +21,19 @@ struct StagedDescriptorHandle
     }
 };
 
+// A descriptor range returned by StagedDescriptorAllocator::AllocContiguous().
+// Includes both the start slot and the count for safe freeing.
+struct StagedDescriptorRange
+{
+    UINT Start = UINT_MAX;
+    UINT Count = 0;
+
+    bool IsValid() const
+    {
+        return Start != UINT_MAX;
+    }
+};
+
 // A growable, staged descriptor allocator.
 //
 // Design:
@@ -140,7 +153,7 @@ public:
     // Allocate a contiguous block of descriptor slots (for descriptor tables).
     // retireFenceValue is used if a Grow() is triggered, so the old GPU heap
     // is retained until the fence completes.
-    StagedDescriptorHandle AllocContiguous(UINT count, UINT64 retireFenceValue)
+    StagedDescriptorRange AllocContiguous(UINT count, UINT64 retireFenceValue)
     {
         assert(m_device != nullptr);
         assert(count > 0);
@@ -174,9 +187,10 @@ public:
             m_maxUsedIndex = start + count;
         }
 
-        StagedDescriptorHandle handle;
-        handle.Index = start;
-        return handle;
+        StagedDescriptorRange range;
+        range.Start = start;
+        range.Count = count;
+        return range;
     }
 
     // Compute the CPU descriptor handle for a logical slot.
@@ -249,6 +263,40 @@ public:
 
         // Shrink maxUsedIndex if the block ends at the top.
         UINT end = first.Index + count;
+        if (end == m_maxUsedIndex)
+        {
+            while (m_maxUsedIndex > 0)
+            {
+                --m_maxUsedIndex;
+                auto it = std::find(m_freeIndices.begin(), m_freeIndices.end(), m_maxUsedIndex);
+                if (it == m_freeIndices.end())
+                {
+                    ++m_maxUsedIndex;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Free a contiguous block of descriptor slots via a StagedDescriptorRange.
+    void FreeContiguous(StagedDescriptorRange range)
+    {
+        if (!range.IsValid() || range.Count == 0)
+        {
+            return;
+        }
+
+        for (UINT i = 0; i < range.Count; ++i)
+        {
+            UINT idx = range.Start + i;
+            assert(idx < m_slotState.size());
+            assert(m_slotState[idx] == SlotState::Allocated);
+
+            m_slotState[idx] = SlotState::Free;
+            m_freeIndices.push_back(idx);
+        }
+
+        UINT end = range.Start + range.Count;
         if (end == m_maxUsedIndex)
         {
             while (m_maxUsedIndex > 0)

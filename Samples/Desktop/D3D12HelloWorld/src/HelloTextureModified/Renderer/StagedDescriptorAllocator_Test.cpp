@@ -98,6 +98,14 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
         return false;
     }
 
+    // Free the single slot so the next test starts from a clean state.
+    alloc.FreeContiguous(single);
+    if (alloc.Used() != 0)
+    {
+        printf("FAIL: After freeing single slot, Used=%u (expected 0)\n", alloc.Used());
+        return false;
+    }
+
     // Allocate a block of 3 contiguous slots.
     auto block = alloc.AllocContiguous(3, UINT64_MAX);
     if (!block.IsValid())
@@ -113,12 +121,12 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
         return false;
     }
 
-    // Verify the slots (including the single slot) are consecutive.
+    // Verify the three slots are actually consecutive by checking CPU handle spacing.
     UINT inc = alloc.DescriptorIncrement();
-    D3D12_CPU_DESCRIPTOR_HANDLE base3 = alloc.CpuHandle(block.Index);
-    for (UINT i = 1; i < 3; ++i)
+    D3D12_CPU_DESCRIPTOR_HANDLE base3 = alloc.CpuHandle(block.Start);
+    for (UINT i = 1; i < block.Count; ++i)
     {
-        D3D12_CPU_DESCRIPTOR_HANDLE slot = alloc.CpuHandle(block.Index + i);
+        D3D12_CPU_DESCRIPTOR_HANDLE slot = alloc.CpuHandle(block.Start + i);
         if (slot.ptr != base3.ptr + i * inc)
         {
             printf("FAIL: Contiguous block slot %u not at expected offset "
@@ -138,9 +146,9 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
             return false;
         }
         // All 5 remaining slots should be distinct from the contiguous block.
-        for (UINT j = 0; j < 3; ++j)
+        for (UINT j = 0; j < block.Count; ++j)
         {
-            if (h.Index == block.Index + j)
+            if (h.Index == block.Start + j)
             {
                 printf("FAIL: Allocate returned a slot (%u) from the contiguous block\n",
                        h.Index);
@@ -149,9 +157,14 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
         }
     }
 
-    // Free the contiguous block via FreeContiguous and verify the slots
+    // Free the contiguous block via FreeContiguous(range) and verify the slots
     // go back to the free list.
-    alloc.FreeContiguous(block, 3);
+    alloc.FreeContiguous(block);
+    if (alloc.Used() != 5)
+    {
+        printf("FAIL: After freeing contiguous block, Used=%u (expected 5)\n", alloc.Used());
+        return false;
+    }
 
     // The freed contiguous range should now be reusable by a single AllocContiguous.
     auto block3 = alloc.AllocContiguous(3, UINT64_MAX);
