@@ -135,7 +135,9 @@ void HelloTextureEngine::InitializeFrameResources()
                static_cast<int>(m_rayTracingSupport.Tier()));
     OutputDebugStringW(debugMessage);
 
+#if defined(_DEBUG)
     RunStagedAllocatorTests(m_graphicsDevice.Device());
+#endif
 
     m_prevTime = std::chrono::steady_clock::now();
     LoadPipeline();
