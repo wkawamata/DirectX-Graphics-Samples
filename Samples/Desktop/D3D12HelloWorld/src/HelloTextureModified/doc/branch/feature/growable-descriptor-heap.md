@@ -80,11 +80,11 @@ enum PersistentSrvSlot : UINT
 - **GPU heap** (`D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE`): 毎フレーム `CopyDescriptorsSimple` で CPU から全コピー。
 
 ```cpp
-StagedDescriptorHandle Allocate();             // 1 slot 確保
-StagedDescriptorHandle AllocContiguous(count); // count 連続 slot 確保
-void Stage(completedFenceValue);               // CPU → GPU コピー + 古い GPU heap 解放
-void Free(StagedDescriptorHandle);             // slot を解放
-void SetPendingFenceValue(value);              // 次回 Grow に備えて fence value を記録
+StagedDescriptorHandle Allocate(retireFenceValue);           // 1 slot 確保
+StagedDescriptorHandle AllocContiguous(count, retireFenceValue); // count 連続 slot 確保
+void Stage(completedFenceValue);                             // CPU → GPU コピー + 古い GPU heap 解放
+void Free(StagedDescriptorHandle);                           // slot を解放
+UINT DescriptorIncrement() const;                            // descriptor handle increment size
 ```
 
 #### Grow 動作
@@ -99,7 +99,7 @@ void SetPendingFenceValue(value);              // 次回 Grow に備えて fence
 
 #### Review 対応
 
-Review ([review-1](growable-descriptor-heap-review-1-cc4f63fed3b3.md)) / ([review-2](growable-descriptor-heap-review-2-a6cbc0a383ea.md)) 指摘に基づく修正:
+Review ([review-1](./growable-descriptor-heap-review-1-cc4f63fed3b3.md) / [review-2](./growable-descriptor-heap-review-2-a6cbc0a383ea.md)) 指摘に基づく修正:
 
 ##### 1. `StagedDescriptorHandle` を slot-only に変更
 
@@ -112,26 +112,43 @@ D3D12_CPU_DESCRIPTOR_HANDLE cpu = alloc.CpuHandle(h.Index);
 D3D12_GPU_DESCRIPTOR_HANDLE gpu = alloc.GpuHandle(h.Index);
 ```
 
-##### 2. 古い GPU heap の deferred release
+##### 2. 古い GPU heap の deferred release (review-2 で修正)
 
 `Grow()` で旧 GPU heap を `m_pendingGpuHeaps` に fence value 付きで退避。
 `Stage(completedFenceValue)` 呼び出し時に fence 完了済みの pending heap を解放。
-`SetPendingFenceValue(value)` で次回 Grow に使う fence value を事前登録する。
 
-##### 3. Smoke test を `_DEBUG` 限定に移行
+v1 では `SetPendingFenceValue()` で事前登録する方式だったが、
+呼び出し忘れで `m_pendingFenceValue == 0` のまま即時解放される危険があった。
+v2 で `Allocate(retireFenceValue)` / `AllocContiguous(count, retireFenceValue)` に
+変更し、呼び出し側が常に fence value を渡す API に改めた。
 
-`InitializeFrameResources()` 内の呼び出しを `#if defined(_DEBUG)` でガード。
-Release ビルドではテストは実行されない。
+##### 3. Smoke test を app startup path から完全除去 (review-2 で修正)
+
+v1 では `#if defined(_DEBUG)` ガードを入れていたが、
+review-2 で `InitializeFrameResources()` からの呼び出し自体を削除。
+テストは `StagedDescriptorAllocator_Test.cpp` に残し、明示的な test harness から
+呼び出す形にした。
 
 ##### 4. `AllocContiguous(count)` の追加
 
 連続 `count` 個の descriptor slot を1回の呼び出しで確保（descriptor table 用）。
 内部で free list をソートして連続領域を探索。見つからなければ Grow してから再試行。
 
+##### 5. Slot state による二重解放検出 (review-2 で追加)
+
+`m_slotState` (`std::vector<SlotState>`) で各 slot の Free/Allocated 状態を管理。
+`Free()` / `Allocate()` / `AllocContiguous()` で assert により
+- 二重解放
+- 未割当 slot の解放
+- 範囲外 index
+
+を debug build で検出する。
+
 #### Smoke test
 
 `Renderer/StagedDescriptorAllocator_Test.cpp` に単体テストを実装。
-Debug ビルド時に起動後に1回実行。
+明示的な test harness からの呼び出しを前提とする。
 テスト内容:
 - 確保・解放・再利用・Grow・Stage の基本動作
-- `AllocContiguous()` の連続確保と断片化後の動作
+- `AllocContiguous()` の連続確保 (`DescriptorIncrement()` で実際の handle 間隔を検証)
+- 解放後の連続再確保
