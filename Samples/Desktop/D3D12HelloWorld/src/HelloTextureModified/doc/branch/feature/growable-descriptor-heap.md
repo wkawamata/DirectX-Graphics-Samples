@@ -68,3 +68,34 @@ enum PersistentSrvSlot : UINT
 `kMainHeapDescriptorCount` の末尾の `+ 2` を `+ PersistentSrvSlotCount` に変更。
 新しい固定 SRV スロットを追加する場合は、列挙子を1行追加するだけでカウントが自動反映される。
 デスクリプタの確保順が enum の定義順と一致することを前提としている（現在の実装と変わらない）。
+
+### Step 2: `StagedDescriptorAllocator` プロトタイプ
+
+`Renderer/StagedDescriptorAllocator.h` に実装。
+
+#### 設計
+
+2つのヒープを管理:
+- **CPU heap** (`D3D12_DESCRIPTOR_HEAP_FLAG_NONE`): 常に最新の記述子を保持。全 Alloc/Free/Write はここに。
+- **GPU heap** (`D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE`): 毎フレーム `CopyDescriptorsSimple` で CPU から全コピー。
+
+```cpp
+StagedDescriptorHandle Allocate();  // 1 slot 確保
+void Stage();                        // 毎フレーム1回: CPU → GPU コピー
+void Free(StagedDescriptorHandle);   // slot を解放
+```
+
+#### Grow 動作
+
+空きがない場合、自動的に Grow する:
+1. 現在の容量 + N の新しい CPU heap / GPU heap を作成
+2. 既存の記述子を古い CPU heap から新しい CPU heap へコピー
+3. 新しい GPU heap にも同様にコピー
+4. 新しい空きスロットを FreeIndices に追加
+5. 古いヒープを解放
+
+#### Smoke test
+
+`Renderer/StagedDescriptorAllocator_Test.cpp` に単体テストを実装。
+`InitializeFrameResources()` 内で起動時に1回実行。
+テスト内容: 確保・解放・再利用・Grow・Stage を検証。
