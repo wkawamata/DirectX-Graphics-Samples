@@ -283,9 +283,17 @@ private:
         kEnvironmentDescriptorTableSize * kEnvironmentDescriptorTableCapacity + 1;
     static constexpr UINT kConstantBufferCount = kFrameCount;
     static constexpr UINT kLightConstantBufferCount = kFrameCount;
-    static constexpr UINT kDepthStencilSrvDescriptorCount = 1;
-    static constexpr UINT kLightPassSrvDescriptorCount = 1;
-    static constexpr UINT kShadowMaskDescriptorCount = 2; // SRV + UAV
+
+    // Fixed SRV slots after the counted arrays (GBuffer SRVs, etc.).
+    // Must be allocated in enum order, immediately after the GBuffer SRVs.
+    enum PersistentSrvSlot : UINT
+    {
+        DepthStencilSrvSlot,
+        LightPassColorSrvSlot,
+
+        PersistentSrvSlotCount,
+    };
+    static constexpr UINT kShadowMaskDescriptorCount = 2; // SRV + UAV (dynamically allocated)
 
     // Descriptor allocation order is tracked by DescriptorHeapHandle.
     // Current persistent descriptors: GBuffer SRVs, depth SRV, LightPass SRV, ShadowMask SRV/UAV, environment map SRVs,
@@ -293,8 +301,9 @@ private:
     static constexpr UINT kMainHeapDescriptorCount = kTextureCount + kInstanceBufferCount + kMaterialBufferCount +
                                                      kEnvironmentMapDescriptorCount + kConstantBufferCount +
                                                      kLightConstantBufferCount + Engine::GBuffer::kCount +
-                                                     kDepthStencilSrvDescriptorCount + kLightPassSrvDescriptorCount +
-                                                     kShadowMaskDescriptorCount;
+                                                     PersistentSrvSlotCount + kShadowMaskDescriptorCount;
+
+    static constexpr int kGpuWorkMeterQueryCount = 100;
 
     static constexpr int kGpuWorkMeterQueryCount = 100;
 
