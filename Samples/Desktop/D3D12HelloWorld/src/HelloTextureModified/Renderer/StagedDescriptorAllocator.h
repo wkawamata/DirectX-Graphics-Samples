@@ -182,6 +182,7 @@ public:
     // Compute the CPU descriptor handle for a logical slot.
     D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle(UINT slot) const
     {
+        assert(slot < m_capacity);
         D3D12_CPU_DESCRIPTOR_HANDLE h = {};
         h.ptr = m_cpuStart.ptr + (slot * m_increment);
         return h;
@@ -190,6 +191,7 @@ public:
     // Compute the GPU descriptor handle for a logical slot.
     D3D12_GPU_DESCRIPTOR_HANDLE GpuHandle(UINT slot) const
     {
+        assert(slot < m_capacity);
         D3D12_GPU_DESCRIPTOR_HANDLE h = {};
         h.ptr = m_gpuStart.ptr + (slot * m_increment);
         return h;
@@ -211,6 +213,43 @@ public:
 
         // Shrink maxUsedIndex when the highest slot is freed (optimistic).
         if (idx + 1 == m_maxUsedIndex)
+        {
+            while (m_maxUsedIndex > 0)
+            {
+                --m_maxUsedIndex;
+                auto it = std::find(m_freeIndices.begin(), m_freeIndices.end(), m_maxUsedIndex);
+                if (it == m_freeIndices.end())
+                {
+                    ++m_maxUsedIndex;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Free a contiguous block of descriptor slots allocated via AllocContiguous.
+    // `first` is the handle returned by AllocContiguous; `count` must match the
+    // original allocation count.
+    void FreeContiguous(StagedDescriptorHandle first, UINT count)
+    {
+        if (!first.IsValid() || count == 0)
+        {
+            return;
+        }
+
+        for (UINT i = 0; i < count; ++i)
+        {
+            UINT idx = first.Index + i;
+            assert(idx < m_slotState.size());
+            assert(m_slotState[idx] == SlotState::Allocated);
+
+            m_slotState[idx] = SlotState::Free;
+            m_freeIndices.push_back(idx);
+        }
+
+        // Shrink maxUsedIndex if the block ends at the top.
+        UINT end = first.Index + count;
+        if (end == m_maxUsedIndex)
         {
             while (m_maxUsedIndex > 0)
             {
@@ -299,6 +338,12 @@ private:
 
         std::vector<UINT> sorted = m_freeIndices;
         std::sort(sorted.begin(), sorted.end());
+
+        // Single slot is always contiguous.
+        if (count == 1)
+        {
+            return sorted[0];
+        }
 
         UINT consecutive = 1;
 
