@@ -123,13 +123,13 @@ void HelloTextureEngine::Initialize(UINT width, UINT height)
 
 void HelloTextureEngine::InitializeFrameResources()
 {
-    const auto rayTracingSupport = Engine::RayTracingSupportInfo::Create(m_graphicsDevice.Device());
+    m_rayTracingSupport = Engine::RayTracingSupportInfo::Create(m_graphicsDevice.Device());
     wchar_t debugMessage[128] = {};
     swprintf_s(debugMessage,
                L"Ray tracing support: supported=%s tier=%s raw=%d\n",
-               rayTracingSupport.IsSupported() ? L"true" : L"false",
-               rayTracingSupport.TierName(),
-               static_cast<int>(rayTracingSupport.Tier()));
+               m_rayTracingSupport.IsSupported() ? L"true" : L"false",
+               m_rayTracingSupport.TierName(),
+               static_cast<int>(m_rayTracingSupport.Tier()));
     OutputDebugStringW(debugMessage);
 
     m_prevTime = std::chrono::steady_clock::now();
@@ -164,6 +164,9 @@ HelloTextureEngine::UiFrameContext HelloTextureEngine::GetUiFrameContext() const
 {
     return {static_cast<int>(m_currentFrameIndex),
             m_cpuFrameTime,
+            m_rayTracingSupport.IsSupported(),
+            m_rayTracingSupport.TierName(),
+            static_cast<int>(m_rayTracingSupport.Tier()),
             m_frameResources[m_previousFrameIndex].gpuWorkMeterCheckPoints};
 }
 

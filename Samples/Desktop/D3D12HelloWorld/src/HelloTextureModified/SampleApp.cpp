@@ -503,6 +503,10 @@ void SampleApp::DrawDebugUi(const HelloTextureEngine::UiFrameContext& context)
     ImGui::Text("Scene: %s", loadedScene.Name());
     ImGui::Text("Loaded Scene Index: %d", m_loadedSceneIndex);
     ImGui::Text("FrameIndex: %d", context.frameIndex);
+    ImGui::Text("Ray Tracing: %s (Tier %ls, raw=%d)",
+                context.rayTracingSupported ? "Supported" : "Not supported",
+                context.rayTracingTierName,
+                context.rayTracingTierRaw);
     if (ImGui::Button("Close Scene"))
     {
         CloseRunningScene();

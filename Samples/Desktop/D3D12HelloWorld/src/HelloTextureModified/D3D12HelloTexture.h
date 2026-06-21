@@ -24,6 +24,7 @@
 #include "Renderer/Material.h"
 #include "Renderer/MaterialBuffer.h"
 #include "Renderer/PipelineFactory.h"
+#include "Renderer/RayTracingSupport.h"
 #include "Renderer/RenderPassExecution.h"
 #include "Renderer/RenderPassGraph.h"
 #include "Renderer/RenderPassResources.h"
@@ -141,6 +142,9 @@ public:
     {
         int frameIndex;
         float cpuFrameTime;
+        bool rayTracingSupported;
+        const wchar_t* rayTracingTierName;
+        int rayTracingTierRaw;
         const std::vector<MyDx12Util::GpuWorkMeter::CheckPoint>& gpuCheckPoints;
     };
 
@@ -394,6 +398,7 @@ private:
 
     RenderingPath m_renderingPath = RenderingPath::Deferred;
     bool m_lightingPassDebugGradientEnabled = false;
+    Engine::RayTracingSupportInfo m_rayTracingSupport;
     Engine::ToneMapPass m_toneMapPass;
 
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
