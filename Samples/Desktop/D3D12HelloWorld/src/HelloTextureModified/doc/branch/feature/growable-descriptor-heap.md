@@ -80,11 +80,12 @@ enum PersistentSrvSlot : UINT
 - **GPU heap** (`D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE`): 毎フレーム `CopyDescriptorsSimple` で CPU から全コピー。
 
 ```cpp
-StagedDescriptorHandle Allocate(retireFenceValue);           // 1 slot 確保
-StagedDescriptorHandle AllocContiguous(count, retireFenceValue); // count 連続 slot 確保
-void Stage(completedFenceValue);                             // CPU → GPU コピー + 古い GPU heap 解放
-void Free(StagedDescriptorHandle);                           // slot を解放
-UINT DescriptorIncrement() const;                            // descriptor handle increment size
+StagedDescriptorHandle Allocate(UINT64 retireFenceValue);         // 1 slot 確保
+StagedDescriptorRange AllocContiguous(UINT count, UINT64 retireFenceValue); // count 連続 slot 確保
+void Stage(UINT64 completedFenceValue);                          // CPU → GPU コピー + 古い GPU heap 解放
+void Free(StagedDescriptorHandle handle);                        // slot を解放
+void FreeContiguous(StagedDescriptorRange range);                // 連続 slot を解放
+UINT DescriptorIncrement() const;                                // descriptor handle increment size
 ```
 
 #### Grow 動作
@@ -99,7 +100,7 @@ UINT DescriptorIncrement() const;                            // descriptor handl
 
 #### Review 対応
 
-Review ([review-1](./growable-descriptor-heap-review-1-cc4f63fed3b3.md) / [review-2](./growable-descriptor-heap-review-2-a6cbc0a383ea.md) / [review-3](./growable-descriptor-heap-review-3-ce3e8899c6dc.md)) 指摘に基づく修正:
+Review ([review-1](./growable-descriptor-heap-review-1-cc4f63fed3b3.md) / [review-2](./growable-descriptor-heap-review-2-a6cbc0a383ea.md) / [review-3](./growable-descriptor-heap-review-3-ce3e8899c6dc.md) / [review-5](./growable-descriptor-heap-review-5-bbaa6c1b2458.md)) 指摘に基づく修正:
 
 ##### 1. `StagedDescriptorHandle` を slot-only に変更
 
