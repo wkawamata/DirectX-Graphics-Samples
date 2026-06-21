@@ -3,6 +3,7 @@
 #include "../DXSampleHelper.h"
 
 #include <cassert>
+#include <deque>
 #include <vector>
 
 // A slot-only handle returned by StagedDescriptorAllocator::Allocate().
@@ -34,8 +35,13 @@ struct StagedDescriptorHandle
 //   Allocate() returns a slot-only StagedDescriptorHandle.
 //   CPU/GPU descriptor handles are obtained via CpuHandle()/GpuHandle().
 //
-//   Stage() copies all currently allocated descriptors from CPU → GPU.
+//   Stage(completedFenceValue) copies all currently allocated descriptors
+//   from CPU → GPU and releases old GPU heaps whose fence has been reached.
 //   Call once per frame before issuing draw/dispatch commands.
+//
+//   SetPendingFenceValue(value) records the fence value to associate with
+//   the next Grow(). The old GPU heap will be retained via the pending list
+//   until completedFenceValue >= that value is passed to Stage().
 //
 //   Free() returns the logical index to the free list.
 class StagedDescriptorAllocator
@@ -65,10 +71,18 @@ public:
         m_device = nullptr;
         m_cpuHeap.Reset();
         m_gpuHeap.Reset();
+        m_pendingGpuHeaps.clear();
         m_capacity = 0;
         m_increment = 0;
         m_maxUsedIndex = 0;
         m_freeIndices.clear();
+    }
+
+    // Record the fence value for the next Grow() so the old GPU heap
+    // is retained until the GPU has finished with it.
+    void SetPendingFenceValue(UINT64 value)
+    {
+        m_pendingFenceValue = value;
     }
 
     // Allocate one descriptor slot.
@@ -97,10 +111,13 @@ public:
         return handle;
     }
 
-    // Stage: copy all live (used) descriptors from CPU heap to GPU heap.
+    // Stage: copy all live (used) descriptors from CPU heap to GPU heap,
+    // and release old GPU heaps whose fence has completed.
     // Call once per frame before any draw/dispatch that references staged descriptors.
-    void Stage()
+    void Stage(UINT64 completedFenceValue)
     {
+        CollectCompletedGpuHeaps(completedFenceValue);
+
         if (m_maxUsedIndex == 0)
         {
             return;
@@ -205,11 +222,27 @@ private:
             m_freeIndices.push_back(i);
         }
 
+        // Defer-release old GPU heap so in-flight draws finish before destruction.
+        if (m_gpuHeap != nullptr)
+        {
+            m_pendingGpuHeaps.push_back({m_gpuHeap, m_pendingFenceValue});
+        }
+
         m_cpuHeap.Swap(newCpuHeap);
         m_gpuHeap.Swap(newGpuHeap);
         m_cpuStart = m_cpuHeap->GetCPUDescriptorHandleForHeapStart();
         m_gpuStart = m_gpuHeap->GetGPUDescriptorHandleForHeapStart();
         m_capacity = newCapacity;
+    }
+
+    // Release old GPU heaps whose fence has been reached.
+    void CollectCompletedGpuHeaps(UINT64 completedFenceValue)
+    {
+        while (!m_pendingGpuHeaps.empty() &&
+               m_pendingGpuHeaps.front().retireFenceValue <= completedFenceValue)
+        {
+            m_pendingGpuHeaps.pop_front();
+        }
     }
 
     ID3D12Device* m_device = nullptr;
@@ -228,4 +261,13 @@ private:
     UINT m_maxUsedIndex = 0;
 
     std::vector<UINT> m_freeIndices;
+
+    UINT64 m_pendingFenceValue = 0;
+
+    struct PendingGpuHeap
+    {
+        ComPtr<ID3D12DescriptorHeap> heap;
+        UINT64 retireFenceValue;
+    };
+    std::deque<PendingGpuHeap> m_pendingGpuHeaps;
 };

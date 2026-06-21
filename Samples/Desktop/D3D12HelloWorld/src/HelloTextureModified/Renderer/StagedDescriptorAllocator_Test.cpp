@@ -74,8 +74,8 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
         return false;
     }
 
-    // Stage() should not crash
-    alloc.Stage();
+    // Stage() should not crash; UINT64_MAX releases all pending GPU heaps.
+    alloc.Stage(UINT64_MAX);
 
     // Cleanup (Destroy called by destructor)
     printf("PASS: StagedDescriptorAllocator smoke test ok (cap=%u, used=%u)\n",
