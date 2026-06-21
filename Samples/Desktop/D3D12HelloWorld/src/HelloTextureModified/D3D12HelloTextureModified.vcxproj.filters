@@ -93,6 +93,9 @@
     <ClInclude Include="Renderer\PipelineFactory.h">
       <Filter>Source Files\Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="Renderer\RayTracingSupport.h">
+      <Filter>Source Files\Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Renderer\RenderPassExecution.h">
       <Filter>Source Files\Renderer</Filter>
     </ClInclude>
@@ -206,6 +209,9 @@
     <ClCompile Include="Renderer\PipelineFactory.cpp">
       <Filter>Source Files\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="Renderer\RayTracingSupport.cpp">
+      <Filter>Source Files\Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="Renderer\RootSignatureFactory.cpp">
       <Filter>Source Files\Renderer</Filter>
     </ClCompile>
@@ -239,6 +245,9 @@
       <Filter>Assets\Shaders</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders_LightPassDebugGradient.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="shaders_RayQueryShadow.hlsl">
       <Filter>Assets\Shaders</Filter>
     </CustomBuild>
     <CustomBuild Include="shaders_ToneMap.hlsl">

@@ -45,6 +45,7 @@
 #include "Renderer\LightingPass.h"
 #include "Renderer\Material.h"
 #include "Renderer\PipelineFactory.h"
+#include "Renderer\RayTracingSupport.h"
 #include "Renderer\RenderPassExecution.h"
 #include "Renderer\RenderPassResources.h"
 #include "Renderer\ResolvedRenderTargets.h"
@@ -122,6 +123,15 @@ void HelloTextureEngine::Initialize(UINT width, UINT height)
 
 void HelloTextureEngine::InitializeFrameResources()
 {
+    const auto rayTracingSupport = Engine::RayTracingSupportInfo::Create(m_graphicsDevice.Device());
+    wchar_t debugMessage[128] = {};
+    swprintf_s(debugMessage,
+               L"Ray tracing support: supported=%s tier=%s raw=%d\n",
+               rayTracingSupport.IsSupported() ? L"true" : L"false",
+               rayTracingSupport.TierName(),
+               static_cast<int>(rayTracingSupport.Tier()));
+    OutputDebugStringW(debugMessage);
+
     m_prevTime = std::chrono::steady_clock::now();
     LoadPipeline();
     LoadAssets();
