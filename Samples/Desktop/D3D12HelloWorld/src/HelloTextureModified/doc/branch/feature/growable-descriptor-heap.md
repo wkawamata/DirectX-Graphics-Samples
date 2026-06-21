@@ -167,3 +167,6 @@ sort 直後に `if (count == 1) return sorted[0]` の early return を追加。
 - 確保・解放・再利用・Grow・Stage の基本動作
 - `AllocContiguous()` の連続確保 (`DescriptorIncrement()` で実際の handle 間隔を検証)
 - 解放後の連続再確保
+
+Debug ウィンドウの "Debug" セクション末尾に **"Run Descriptor Allocator Tests"** ボタンを追加。
+アプリ起動時には自動実行されず、ボタン押下で手動実行される。
