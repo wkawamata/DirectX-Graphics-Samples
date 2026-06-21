@@ -19,6 +19,8 @@
 #include "MyDx12Utils.h"
 #include "Renderer/DebugDumpReport.h"
 #include "Renderer/RootSignatureFactory.h"
+// Forward declaration for the staged allocator smoke test.
+void RunStagedAllocatorTests(ID3D12Device* device);
 
 #include <random>
 #include <combaseapi.h>
@@ -132,6 +134,8 @@ void HelloTextureEngine::InitializeFrameResources()
                m_rayTracingSupport.TierName(),
                static_cast<int>(m_rayTracingSupport.Tier()));
     OutputDebugStringW(debugMessage);
+
+    RunStagedAllocatorTests(m_graphicsDevice.Device());
 
     m_prevTime = std::chrono::steady_clock::now();
     LoadPipeline();
