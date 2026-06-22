@@ -171,3 +171,18 @@ sort 直後に `if (count == 1) return sorted[0]` の early return を追加。
 
 Debug ウィンドウの "Debug" セクション末尾に **"Run Descriptor Allocator Tests"** ボタンを追加。
 アプリ起動時には自動実行されず、ボタン押下で手動実行される。
+
+### Review-5 Trial: ShadowMask SRV/UAV への適用
+
+Review-5 推奨の小規模 trial として ShadowMask descriptor table を `StagedDescriptorAllocator` に移行。
+
+変更内容:
+- `m_shadowMaskSrv` / `m_shadowMaskUav` (`DescriptorAllocation`×2) を `m_shadowMaskRange` (`StagedDescriptorRange`) に置き換え
+- `StagedDescriptorAllocator m_stageAllocator` をエンジンに追加、capacity=4 で初期化
+- `AllocContiguous(2, UINT64_MAX)` で SRV+UAV を連続確保
+- `CpuHandle(range.Start)` / `CpuHandle(range.Start+1)` で view 作成
+- `GpuHandle(range.Start)` / `GpuHandle(range.Start+1)` で RenderGraph binding と直接描画コマンドで使用
+- `PopulateCommandList()` 内で `m_stageAllocator.Stage(m_graphicsDevice.CompletedFenceValue())` を毎フレーム呼び出し
+- `kMainHeapDescriptorCount` から `kShadowMaskDescriptorCount` (=2) を削除
+
+既存の `SimpleDescriptorHeapAllocator` は他用途で共存継続。
