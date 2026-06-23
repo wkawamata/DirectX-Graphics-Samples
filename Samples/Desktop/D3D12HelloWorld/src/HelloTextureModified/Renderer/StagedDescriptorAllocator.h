@@ -313,6 +313,7 @@ public:
     UINT Capacity() const { return m_capacity; }
     UINT Used() const { return m_capacity - static_cast<UINT>(m_freeIndices.size()); }
     UINT DescriptorIncrement() const { return m_increment; }
+    ID3D12DescriptorHeap* GetGpuHeap() const { return m_gpuHeap.Get(); }
 
 private:
     void Grow(UINT additionalSlots, UINT64 retireFenceValue)

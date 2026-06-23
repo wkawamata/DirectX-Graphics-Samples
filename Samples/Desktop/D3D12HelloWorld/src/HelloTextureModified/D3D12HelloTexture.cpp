@@ -1891,6 +1891,12 @@ void HelloTextureEngine::RenderFrame(const UiRenderHandler& uiRenderHandler)
 {
     PIXBeginEvent(0, L"RenderFrame");
 
+    // Stage staged descriptors (ShadowMask) to the GPU-visible heap
+    // using the completed fence value from the previous frame.
+    // This must happen before PopulateCommandList() so the GPU heap is not bound
+    // when CopyDescriptorsSimple modifies it.
+    m_stageAllocator.Stage(m_graphicsDevice.CompletedFenceValue());
+
     UpdatePerFrameRenderSettings();
     m_activeUiRenderHandler = &uiRenderHandler;
 
@@ -2075,11 +2081,6 @@ void HelloTextureEngine::PopulateCommandList()
     PIXBeginEvent(1, L"PopulateCommandList");
 
     BeginFrame();
-
-    // Stage staged descriptors (ShadowMask) to the GPU-visible heap
-    // before any draw/dispatch commands reference them.
-    m_stageAllocator.Stage(m_graphicsDevice.CompletedFenceValue());
-
     ResetResourceStates();
     BuildRenderPasses();
     ValidateRenderPassGraph();
@@ -2300,7 +2301,7 @@ void HelloTextureEngine::BeginFrame()
     // Set necessary state.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
-    ID3D12DescriptorHeap* ppHeaps[] = {m_heap.Get()};
+    ID3D12DescriptorHeap* ppHeaps[] = {m_heap.Get(), m_stageAllocator.GetGpuHeap()};
     m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     m_commandList->RSSetViewports(1, &m_viewport);
