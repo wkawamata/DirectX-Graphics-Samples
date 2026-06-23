@@ -138,11 +138,9 @@ public:
             return;
         }
 
-        D3D12_CPU_DESCRIPTOR_HANDLE srcStart = {};
-        srcStart.ptr = m_cpuStart.ptr;
+        D3D12_CPU_DESCRIPTOR_HANDLE srcStart = m_cpuStart;
 
-        D3D12_CPU_DESCRIPTOR_HANDLE dstStart = {};
-        dstStart.ptr = m_gpuStart.ptr;
+        D3D12_CPU_DESCRIPTOR_HANDLE dstStart = m_gpuCpuStart;
 
         m_device->CopyDescriptorsSimple(static_cast<UINT>(m_maxUsedIndex),
                                         dstStart,
@@ -372,6 +370,7 @@ private:
         m_gpuHeap.Swap(newGpuHeap);
         m_cpuStart = m_cpuHeap->GetCPUDescriptorHandleForHeapStart();
         m_gpuStart = m_gpuHeap->GetGPUDescriptorHandleForHeapStart();
+        m_gpuCpuStart = m_gpuHeap->GetCPUDescriptorHandleForHeapStart();
         m_capacity = newCapacity;
     }
 
@@ -432,6 +431,7 @@ private:
 
     D3D12_CPU_DESCRIPTOR_HANDLE m_cpuStart{};
     D3D12_GPU_DESCRIPTOR_HANDLE m_gpuStart{};
+    D3D12_CPU_DESCRIPTOR_HANDLE m_gpuCpuStart{};
 
     UINT m_increment = 0;
     UINT m_capacity = 0;
