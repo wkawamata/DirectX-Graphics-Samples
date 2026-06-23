@@ -55,6 +55,14 @@ struct StagedDescriptorRange
 //   external GPU heap's reserved range. Call once per frame before issuing
 //   draw/dispatch commands that reference staged descriptors.
 //
+//   Frame-buffered staging: the external heap reserves
+//   [stageOffset, stageOffset + reservedCount * kFrameCount).
+//   SetFrameIndex(i) selects the i-th chunk
+//   [stageOffset + i * reservedCount, stageOffset + (i+1) * reservedCount).
+//   Call SetFrameIndex() before Stage() each frame so that the copy
+//   destination and GpuHandle() use the same per-frame offset, avoiding
+//   STATIC_DESCRIPTOR_INVALID_DESCRIPTOR_CHANGE.
+//
 //   Free() returns the logical index to the free list.
 class StagedDescriptorAllocator
 {
@@ -146,7 +154,7 @@ public:
         D3D12_CPU_DESCRIPTOR_HANDLE srcStart = m_cpuStart;
 
         D3D12_CPU_DESCRIPTOR_HANDLE dstStart = {};
-        dstStart.ptr = m_mainCpuStart.ptr + m_stageOffset * m_increment;
+        dstStart.ptr = m_mainCpuStart.ptr + (CurrentStageOffset() * m_increment);
 
         m_device->CopyDescriptorsSimple(static_cast<UINT>(m_maxUsedIndex),
                                         dstStart,
@@ -209,7 +217,7 @@ public:
     {
         assert(slot < m_capacity);
         D3D12_GPU_DESCRIPTOR_HANDLE h = {};
-        h.ptr = m_mainGpuStart.ptr + ((m_stageOffset + slot) * m_increment);
+        h.ptr = m_mainGpuStart.ptr + ((CurrentStageOffset() + slot) * m_increment);
         return h;
     }
 
@@ -308,17 +316,27 @@ public:
         }
     }
 
+    // Set the current frame index. This selects the per-frame chunk within the
+    // external heap's reserved range. Must be called before Stage() and before
+    // any code that calls GpuHandle() for the current frame.
+    void SetFrameIndex(UINT frameIndex)
+    {
+        m_frameIndex = frameIndex;
+    }
+
     UINT Capacity() const { return m_capacity; }
     UINT Used() const { return m_capacity - static_cast<UINT>(m_freeIndices.size()); }
     UINT DescriptorIncrement() const { return m_increment; }
+    UINT CurrentFrameIndex() const { return m_frameIndex; }
 
 private:
     void Grow(UINT additionalSlots)
     {
         UINT newCapacity = m_capacity + additionalSlots;
-        assert(newCapacity <= m_reservedCount &&
-            "StagedDescriptorAllocator: Grow exceeds reservedCount. "
-            "Increase reservedCount in the engine.");
+        if (newCapacity > m_reservedCount)
+        {
+            ThrowIfFailed(E_OUTOFMEMORY);
+        }
 
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = m_heapType;
@@ -385,6 +403,12 @@ private:
         return UINT_MAX;
     }
 
+    // Current per-frame offset in the external GPU heap.
+    UINT CurrentStageOffset() const
+    {
+        return m_stageOffset + m_frameIndex * m_reservedCount;
+    }
+
     ID3D12Device* m_device = nullptr;
     D3D12_DESCRIPTOR_HEAP_TYPE m_heapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
 
@@ -398,6 +422,7 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE m_mainGpuStart{};
     UINT m_stageOffset = 0;
     UINT m_reservedCount = 0;
+    UINT m_frameIndex = 0;
 
     UINT m_increment = 0;
     UINT m_capacity = 0;

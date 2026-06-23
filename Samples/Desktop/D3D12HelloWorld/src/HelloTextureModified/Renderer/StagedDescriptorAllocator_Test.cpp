@@ -90,7 +90,8 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
         return false;
     }
 
-    // Stage() should not crash.
+    // Stage() uses the per-frame offset set by SetFrameIndex.
+    alloc.SetFrameIndex(0);
     alloc.Stage();
 
     printf("PASS: StagedDescriptorAllocator smoke test ok (cap=%u, used=%u)\n",
@@ -193,6 +194,7 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
         return false;
     }
 
+    alloc.SetFrameIndex(0);
     alloc.Stage();
 
     printf("PASS: ContiguousAlloc test ok\n");

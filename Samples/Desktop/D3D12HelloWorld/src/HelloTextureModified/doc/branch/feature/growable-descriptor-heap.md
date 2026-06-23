@@ -272,29 +272,39 @@ for the last time.
 統合後は前フレームのコマンドリストが `m_heap` を STATIC バインドしたまま実行中に、
 次フレームの `Stage()` が同じヒープの内容を変更していると D3D12 が検出する。
 
-#### 対処案 (未実施)
+#### 対処: frame-buffered staged reservation (Review-7 指摘により採用)
 
-**案 A: `D3D12_DESCRIPTOR_HEAP_FLAG_DESCRIPTORS_VOLATILE` を追加**
+`D3D12_DESCRIPTOR_HEAP_FLAG_DESCRIPTORS_VOLATILE` という heap flag は存在しない
+（`DESCRIPTORS_VOLATILE` は root signature descriptor range のフラグである）。
+そのため volatile 化ではなく、予約領域をフレーム数分に分割する frame-buffered 方式を採用した。
 
-ヒープ作成時のフラグに `D3D12_DESCRIPTOR_HEAP_FLAG_DESCRIPTORS_VOLATILE` を追加する。
-一箇所の修正で済む。ドライバ最適化が一部効かなくなる可能性があるが、
-サンプルコードへの影響は無視できる。
+**方式:**
+
+`kStagedDescriptorReservedCount` を per-frame capacity とし、
+メインヒープに `kStagedDescriptorReservedCount * kFrameCount` の予約領域を確保する。
+
+```
+stagedBase = kMainHeapDescriptorCount
+perFrameCapacity = kStagedDescriptorReservedCount
+
+Frame 0: [stagedBase + 0 * perFrameCapacity, stagedBase + 1 * perFrameCapacity)
+Frame 1: [stagedBase + 1 * perFrameCapacity, stagedBase + 2 * perFrameCapacity)
+```
+
+`StagedDescriptorAllocator` に `SetFrameIndex(frameIndex)` を追加。
+`Stage()` と `GpuHandle()` は同じ `CurrentStageOffset()` (= `stageOffset + frameIndex * reservedCount`) を使用する。
+
+`RenderFrame()` では次の順序で呼び出す:
 
 ```cpp
-heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE |
-                 D3D12_DESCRIPTOR_HEAP_FLAG_DESCRIPTORS_VOLATILE;
+m_stageAllocator.SetFrameIndex(m_currentFrameIndex);
+m_stageAllocator.Stage();
 ```
 
-**案 B: 予約領域をフレーム数分ダブルバッファリング**
+これにより前フレームが参照している descriptor slot を次フレームが上書きしなくなるため、
+STATIC descriptor のままでも `STATIC_DESCRIPTOR_INVALID_DESCRIPTOR_CHANGE` が発生しない。
 
-`kStagedDescriptorReservedCount` をフレーム数で分割し、
-フレームインデックスごとに異なるオフセットを使用する。
-前フレームの領域に書き込まないため STATIC 制約に違反しない。
+**`reservedCount` 超過の hard failure 化:**
 
-```
-Frame N: stageOffset = kMainHeapDescriptorCount + 0 * perFrameSize
-Frame N+1: stageOffset = kMainHeapDescriptorCount + 1 * perFrameSize
-```
-
-`SetFrameIndex(frameIndex)` を `Stage()` 前に呼び出し、
-`GpuHandle()` と `Stage()` が同一のオフセットを参照するよう同期する。
+Review-7 の指摘により、`Grow()` での `reservedCount` 超過を `assert` のみから
+`ThrowIfFailed(E_OUTOFMEMORY)` に変更し、Release build でも止まるようにした。

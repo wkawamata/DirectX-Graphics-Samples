@@ -412,7 +412,8 @@ void HelloTextureEngine::LoadPipeline()
         // SimpleDescriptorHeapAllocator) and a reserved tail region for staging
         // copies (managed by StagedDescriptorAllocator).
         D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-        heapDesc.NumDescriptors = kMainHeapDescriptorCount + kStagedDescriptorReservedCount;
+        // Total heap = regular descriptors + per-frame staged chunks.
+        heapDesc.NumDescriptors = kMainHeapDescriptorCount + kStagedDescriptorReservedCount * kFrameCount;
         heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(m_graphicsDevice.Device()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_heap)));
@@ -1906,10 +1907,11 @@ void HelloTextureEngine::RenderFrame(const UiRenderHandler& uiRenderHandler)
 {
     PIXBeginEvent(0, L"RenderFrame");
 
-    // Stage staged descriptors (ShadowMask) from the CPU heap into the
-    // reserved range of the main shader-visible heap.
-    // This must happen before PopulateCommandList() so the GPU heap is not bound
-    // when CopyDescriptorsSimple modifies it.
+    // Select the per-frame chunk within the main heap's reserved range and
+    // stage descriptors from the CPU heap into that chunk.
+    // SetFrameIndex must match the current frame so that GpuHandle() (called
+    // during command recording) points to the same chunk that Stage() writes.
+    m_stageAllocator.SetFrameIndex(m_currentFrameIndex);
     m_stageAllocator.Stage();
 
     UpdatePerFrameRenderSettings();
