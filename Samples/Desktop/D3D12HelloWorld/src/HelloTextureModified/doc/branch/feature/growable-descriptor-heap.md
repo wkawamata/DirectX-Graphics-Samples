@@ -186,3 +186,15 @@ Review-5 推奨の小規模 trial として ShadowMask descriptor table を `Sta
 - `kMainHeapDescriptorCount` から `kShadowMaskDescriptorCount` (=2) を削除
 
 既存の `SimpleDescriptorHeapAllocator` は他用途で共存継続。
+
+#### 追加修正: ランタイムエラー対応
+
+実行時に以下の D3D12 Validation エラーが発生し、修正:
+
+1. **SET_DESCRIPTOR_TABLE_INVALID** (heap mismatch)
+   - ShadowMask UAV GPU handle が staged GPU heap から来るが、command list には main heap しか bind されていなかった
+   - 対策: `StagedDescriptorAllocator::GetGpuHeap()` を追加し、`BeginFrame()` で main heap と staged GPU heap を両方 `SetDescriptorHeaps()` する
+
+2. **STATIC_DESCRIPTOR_INVALID_DESCRIPTOR_CHANGE** (CopyDescriptorsSimple 実行時に GPU heap が bind されたまま)
+   - `Stage()` が `PopulateCommandList()` 内の `BeginFrame()` 後で呼ばれていたため、GPU heap が既に command list に bind された後に `CopyDescriptorsSimple` が走っていた
+   - 対策: `Stage()` を `RenderFrame()` 先頭（`PopulateCommandList()` 前）に移動し、`m_graphicsDevice.CompletedFenceValue()` を使用。前フレームの GPU 作業完了後に GPU heap を更新する設計に変更。
