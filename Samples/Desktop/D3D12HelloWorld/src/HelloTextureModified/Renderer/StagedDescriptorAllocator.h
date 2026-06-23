@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <deque>
 #include <vector>
 
 // A slot-only handle returned by StagedDescriptorAllocator::Allocate().
@@ -34,30 +33,29 @@ struct StagedDescriptorRange
     }
 };
 
-// A growable, staged descriptor allocator.
+// A growable, staged descriptor allocator that writes into a reserved
+// region of an externally-owned shader-visible descriptor heap.
 //
 // Design:
 //   CPU heap (D3D12_DESCRIPTOR_HEAP_FLAG_NONE)
 //     - Authoritative storage. All writes happen here.
 //     - Free list tracks available slots.
-//     - Grows on demand when the free list is exhausted.
+//     - Grows on demand (bounded by reservedCount).
 //
-//   GPU heap (D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE)
-//     - Staging copy, refreshed each frame via CopyDescriptors.
-//     - Resized to match CPU heap when growing.
+//   External GPU heap (D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE)
+//     - Owned and bound by the engine.
+//     - A contiguous range [stageOffset, stageOffset + reservedCount) is
+//       reserved for this allocator.
+//     - Stage() copies from the CPU heap into this range.
 //
 //   Allocate() returns a slot-only StagedDescriptorHandle.
 //   CPU/GPU descriptor handles are obtained via CpuHandle()/GpuHandle().
 //
-//   Stage(completedFenceValue) copies all currently allocated descriptors
-//   from CPU → GPU and releases old GPU heaps whose fence has been reached.
-//   Call once per frame before issuing draw/dispatch commands.
-//
-//   Allocate/AllocContiguous take a retireFenceValue parameter so the
-//   old GPU heap (if Grow is triggered) is retained until the fence completes.
+//   Stage() copies all currently allocated descriptors from CPU to the
+//   external GPU heap's reserved range. Call once per frame before issuing
+//   draw/dispatch commands that reference staged descriptors.
 //
 //   Free() returns the logical index to the free list.
-//   In debug builds, double-free and out-of-range are detected via slot state tracking.
 class StagedDescriptorAllocator
 {
 public:
@@ -66,28 +64,38 @@ public:
         Destroy();
     }
 
-    // Initialise with a starting capacity.
-    // Must be called before any Allocate.
-    void Init(ID3D12Device* device, D3D12_DESCRIPTOR_HEAP_TYPE type, UINT initialCapacity)
+    // Initialise with a starting capacity and the external GPU heap info.
+    //   mainCpuStart  - CPU handle of the external shader-visible heap start
+    //   mainGpuStart  - GPU handle of the external shader-visible heap start
+    //   stageOffset   - offset (in descriptors) from main heap start for this
+    //                   allocator's reserved range
+    //   reservedCount - maximum number of descriptors this allocator may grow to
+    void Init(ID3D12Device* device,
+              D3D12_DESCRIPTOR_HEAP_TYPE type,
+              UINT initialCapacity,
+              D3D12_CPU_DESCRIPTOR_HANDLE mainCpuStart,
+              D3D12_GPU_DESCRIPTOR_HANDLE mainGpuStart,
+              UINT stageOffset,
+              UINT reservedCount)
     {
         assert(m_device == nullptr);
         m_device = device;
         m_heapType = type;
         m_increment = device->GetDescriptorHandleIncrementSize(type);
+        m_mainCpuStart = mainCpuStart;
+        m_mainGpuStart = mainGpuStart;
+        m_stageOffset = stageOffset;
+        m_reservedCount = reservedCount;
         m_capacity = 0;
         m_maxUsedIndex = 0;
 
-        // Initialise with a dummy fence value; the first Grow will not have a
-        // previous GPU heap to defer, so the value doesn't matter.
-        Grow(initialCapacity, UINT64_MAX);
+        Grow(initialCapacity);
     }
 
     void Destroy()
     {
         m_device = nullptr;
         m_cpuHeap.Reset();
-        m_gpuHeap.Reset();
-        m_pendingGpuHeaps.clear();
         m_capacity = 0;
         m_increment = 0;
         m_maxUsedIndex = 0;
@@ -96,16 +104,14 @@ public:
     }
 
     // Allocate one descriptor slot.
-    // retireFenceValue is used if a Grow() is triggered, so the old GPU heap
-    // is retained until the fence completes.
-    StagedDescriptorHandle Allocate(UINT64 retireFenceValue)
+    StagedDescriptorHandle Allocate()
     {
         assert(m_device != nullptr);
 
         if (m_freeIndices.empty())
         {
             UINT growSize = (std::max)(m_capacity, 64u);
-            Grow(growSize, retireFenceValue);
+            Grow(growSize);
         }
 
         UINT idx = m_freeIndices.back();
@@ -126,13 +132,12 @@ public:
         return handle;
     }
 
-    // Stage: copy all live (used) descriptors from CPU heap to GPU heap,
-    // and release old GPU heaps whose fence has completed.
-    // Call once per frame before any draw/dispatch that references staged descriptors.
-    void Stage(UINT64 completedFenceValue)
+    // Stage: copy all live descriptors from the CPU heap to the reserved
+    // range of the external GPU heap.
+    // Call once per frame before any draw/dispatch that references staged
+    // descriptors.
+    void Stage()
     {
-        CollectCompletedGpuHeaps(completedFenceValue);
-
         if (m_maxUsedIndex == 0)
         {
             return;
@@ -140,7 +145,8 @@ public:
 
         D3D12_CPU_DESCRIPTOR_HANDLE srcStart = m_cpuStart;
 
-        D3D12_CPU_DESCRIPTOR_HANDLE dstStart = m_gpuCpuStart;
+        D3D12_CPU_DESCRIPTOR_HANDLE dstStart = {};
+        dstStart.ptr = m_mainCpuStart.ptr + m_stageOffset * m_increment;
 
         m_device->CopyDescriptorsSimple(static_cast<UINT>(m_maxUsedIndex),
                                         dstStart,
@@ -149,9 +155,7 @@ public:
     }
 
     // Allocate a contiguous block of descriptor slots (for descriptor tables).
-    // retireFenceValue is used if a Grow() is triggered, so the old GPU heap
-    // is retained until the fence completes.
-    StagedDescriptorRange AllocContiguous(UINT count, UINT64 retireFenceValue)
+    StagedDescriptorRange AllocContiguous(UINT count)
     {
         assert(m_device != nullptr);
         assert(count > 0);
@@ -160,12 +164,11 @@ public:
         if (start == UINT_MAX)
         {
             UINT growSize = (std::max)(count, (std::max)(m_capacity, 64u));
-            Grow(growSize, retireFenceValue);
+            Grow(growSize);
             start = FindContiguousRun(count);
             assert(start != UINT_MAX);
         }
 
-        // Remove the allocated slots from the free list and mark them allocated.
         for (UINT i = 0; i < count; ++i)
         {
             UINT slot = start + i;
@@ -191,7 +194,7 @@ public:
         return range;
     }
 
-    // Compute the CPU descriptor handle for a logical slot.
+    // Compute the CPU descriptor handle for a logical slot (in the CPU heap).
     D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle(UINT slot) const
     {
         assert(slot < m_capacity);
@@ -200,12 +203,13 @@ public:
         return h;
     }
 
-    // Compute the GPU descriptor handle for a logical slot.
+    // Compute the GPU descriptor handle for a logical slot (in the external
+    // GPU heap's reserved range).
     D3D12_GPU_DESCRIPTOR_HANDLE GpuHandle(UINT slot) const
     {
         assert(slot < m_capacity);
         D3D12_GPU_DESCRIPTOR_HANDLE h = {};
-        h.ptr = m_gpuStart.ptr + (slot * m_increment);
+        h.ptr = m_mainGpuStart.ptr + ((m_stageOffset + slot) * m_increment);
         return h;
     }
 
@@ -223,7 +227,6 @@ public:
         m_slotState[idx] = SlotState::Free;
         m_freeIndices.push_back(idx);
 
-        // Shrink maxUsedIndex when the highest slot is freed (optimistic).
         if (idx + 1 == m_maxUsedIndex)
         {
             while (m_maxUsedIndex > 0)
@@ -239,9 +242,6 @@ public:
         }
     }
 
-    // Free a contiguous block of descriptor slots allocated via AllocContiguous.
-    // `first` is the handle returned by AllocContiguous; `count` must match the
-    // original allocation count.
     void FreeContiguous(StagedDescriptorHandle first, UINT count)
     {
         if (!first.IsValid() || count == 0)
@@ -259,7 +259,6 @@ public:
             m_freeIndices.push_back(idx);
         }
 
-        // Shrink maxUsedIndex if the block ends at the top.
         UINT end = first.Index + count;
         if (end == m_maxUsedIndex)
         {
@@ -276,7 +275,6 @@ public:
         }
     }
 
-    // Free a contiguous block of descriptor slots via a StagedDescriptorRange.
     void FreeContiguous(StagedDescriptorRange range)
     {
         if (!range.IsValid() || range.Count == 0)
@@ -313,14 +311,15 @@ public:
     UINT Capacity() const { return m_capacity; }
     UINT Used() const { return m_capacity - static_cast<UINT>(m_freeIndices.size()); }
     UINT DescriptorIncrement() const { return m_increment; }
-    ID3D12DescriptorHeap* GetGpuHeap() const { return m_gpuHeap.Get(); }
 
 private:
-    void Grow(UINT additionalSlots, UINT64 retireFenceValue)
+    void Grow(UINT additionalSlots)
     {
         UINT newCapacity = m_capacity + additionalSlots;
+        assert(newCapacity <= m_reservedCount &&
+            "StagedDescriptorAllocator: Grow exceeds reservedCount. "
+            "Increase reservedCount in the engine.");
 
-        // Create or grow CPU heap
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = m_heapType;
         desc.NumDescriptors = newCapacity;
@@ -331,7 +330,6 @@ private:
         ThrowIfFailed(m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newCpuHeap)));
         newCpuHeap->SetName(L"StagedDescriptorAllocator (CPU)");
 
-        // Copy existing descriptors from old CPU heap to new CPU heap
         if (m_cpuHeap != nullptr && m_maxUsedIndex > 0)
         {
             D3D12_CPU_DESCRIPTOR_HANDLE srcStart = m_cpuHeap->GetCPUDescriptorHandleForHeapStart();
@@ -339,44 +337,18 @@ private:
             m_device->CopyDescriptorsSimple(m_maxUsedIndex, dstStart, srcStart, m_heapType);
         }
 
-        // Create or grow GPU heap
-        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ComPtr<ID3D12DescriptorHeap> newGpuHeap;
-        ThrowIfFailed(m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&newGpuHeap)));
-        newGpuHeap->SetName(L"StagedDescriptorAllocator (GPU)");
-
-        if (m_gpuHeap != nullptr && m_maxUsedIndex > 0)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE srcStart = m_cpuHeap->GetCPUDescriptorHandleForHeapStart();
-            D3D12_CPU_DESCRIPTOR_HANDLE dstStart = newGpuHeap->GetCPUDescriptorHandleForHeapStart();
-            m_device->CopyDescriptorsSimple(m_maxUsedIndex, dstStart, srcStart, m_heapType);
-        }
-
-        // Add new slots to the free list
         for (UINT i = m_capacity; i < newCapacity; ++i)
         {
             m_freeIndices.push_back(i);
         }
 
-        // Extend slot state tracking for new slots.
         m_slotState.resize(newCapacity, SlotState::Free);
 
-        // Defer-release old GPU heap so in-flight draws finish before destruction.
-        if (m_gpuHeap != nullptr)
-        {
-            m_pendingGpuHeaps.push_back({m_gpuHeap, retireFenceValue});
-        }
-
         m_cpuHeap.Swap(newCpuHeap);
-        m_gpuHeap.Swap(newGpuHeap);
         m_cpuStart = m_cpuHeap->GetCPUDescriptorHandleForHeapStart();
-        m_gpuStart = m_gpuHeap->GetGPUDescriptorHandleForHeapStart();
-        m_gpuCpuStart = m_gpuHeap->GetCPUDescriptorHandleForHeapStart();
         m_capacity = newCapacity;
     }
 
-    // Find the first contiguous run of `count` free slots.
-    // Returns UINT_MAX if no such run exists.
     UINT FindContiguousRun(UINT count) const
     {
         if (m_freeIndices.size() < count)
@@ -387,7 +359,6 @@ private:
         std::vector<UINT> sorted = m_freeIndices;
         std::sort(sorted.begin(), sorted.end());
 
-        // Single slot is always contiguous.
         if (count == 1)
         {
             return sorted[0];
@@ -414,30 +385,23 @@ private:
         return UINT_MAX;
     }
 
-    // Release old GPU heaps whose fence has been reached.
-    void CollectCompletedGpuHeaps(UINT64 completedFenceValue)
-    {
-        while (!m_pendingGpuHeaps.empty() &&
-               m_pendingGpuHeaps.front().retireFenceValue <= completedFenceValue)
-        {
-            m_pendingGpuHeaps.pop_front();
-        }
-    }
-
     ID3D12Device* m_device = nullptr;
     D3D12_DESCRIPTOR_HEAP_TYPE m_heapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
 
     ComPtr<ID3D12DescriptorHeap> m_cpuHeap;
-    ComPtr<ID3D12DescriptorHeap> m_gpuHeap;
 
+    // Start of the CPU heap (authoritative storage).
     D3D12_CPU_DESCRIPTOR_HANDLE m_cpuStart{};
-    D3D12_GPU_DESCRIPTOR_HANDLE m_gpuStart{};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_gpuCpuStart{};
+
+    // External shader-visible heap info for the staged copy destination.
+    D3D12_CPU_DESCRIPTOR_HANDLE m_mainCpuStart{};
+    D3D12_GPU_DESCRIPTOR_HANDLE m_mainGpuStart{};
+    UINT m_stageOffset = 0;
+    UINT m_reservedCount = 0;
 
     UINT m_increment = 0;
     UINT m_capacity = 0;
 
-    // Highest index ever allocated + 1 (defines the copy range for Stage).
     UINT m_maxUsedIndex = 0;
 
     enum class SlotState
@@ -447,11 +411,4 @@ private:
     };
     std::vector<SlotState> m_slotState;
     std::vector<UINT> m_freeIndices;
-
-    struct PendingGpuHeap
-    {
-        ComPtr<ID3D12DescriptorHeap> heap;
-        UINT64 retireFenceValue;
-    };
-    std::deque<PendingGpuHeap> m_pendingGpuHeaps;
 };

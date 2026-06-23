@@ -407,17 +407,32 @@ void HelloTextureEngine::LoadPipeline()
         m_rtvDescriptorSize =
             m_graphicsDevice.Device()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-        // Describe and create a heap for SRV/CBV/UAV
+        // Describe and create a single shader-visible heap for CBV/SRV/UAV.
+        // The heap is sized to hold both the regular descriptors (managed by
+        // SimpleDescriptorHeapAllocator) and a reserved tail region for staging
+        // copies (managed by StagedDescriptorAllocator).
         D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-        heapDesc.NumDescriptors = kMainHeapDescriptorCount;
+        heapDesc.NumDescriptors = kMainHeapDescriptorCount + kStagedDescriptorReservedCount;
         heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(m_graphicsDevice.Device()->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_heap)));
-        // Create a descriptor allocator to manage the descriptors in the heap.
-        m_descriptorHeapAllocator.Init(m_graphicsDevice.Device(), m_heap.Get());
+
+        // Create a descriptor allocator limited to the regular (non-staged) region.
+        m_descriptorHeapAllocator.Init(m_graphicsDevice.Device(), m_heap.Get(), kMainHeapDescriptorCount);
 
         // Initialize staged descriptor allocator for ShadowMask (and future transient descriptors).
-        m_stageAllocator.Init(m_graphicsDevice.Device(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4);
+        // The allocator owns a CPU heap and copies into a reserved range of the main GPU heap.
+        {
+            D3D12_CPU_DESCRIPTOR_HANDLE mainCpuStart = m_heap->GetCPUDescriptorHandleForHeapStart();
+            D3D12_GPU_DESCRIPTOR_HANDLE mainGpuStart = m_heap->GetGPUDescriptorHandleForHeapStart();
+            m_stageAllocator.Init(m_graphicsDevice.Device(),
+                                  D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                                  4,
+                                  mainCpuStart,
+                                  mainGpuStart,
+                                  kMainHeapDescriptorCount,
+                                  kStagedDescriptorReservedCount);
+        }
     }
 
     // create render target views (RTVs) for the swap chain back buffers.
@@ -1668,7 +1683,7 @@ void HelloTextureEngine::CreateShadowMaskDescriptors()
 {
     if (!m_shadowMaskRange.IsValid())
     {
-        m_shadowMaskRange = m_stageAllocator.AllocContiguous(2, UINT64_MAX);
+        m_shadowMaskRange = m_stageAllocator.AllocContiguous(2);
     }
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -1891,11 +1906,11 @@ void HelloTextureEngine::RenderFrame(const UiRenderHandler& uiRenderHandler)
 {
     PIXBeginEvent(0, L"RenderFrame");
 
-    // Stage staged descriptors (ShadowMask) to the GPU-visible heap
-    // using the completed fence value from the previous frame.
+    // Stage staged descriptors (ShadowMask) from the CPU heap into the
+    // reserved range of the main shader-visible heap.
     // This must happen before PopulateCommandList() so the GPU heap is not bound
     // when CopyDescriptorsSimple modifies it.
-    m_stageAllocator.Stage(m_graphicsDevice.CompletedFenceValue());
+    m_stageAllocator.Stage();
 
     UpdatePerFrameRenderSettings();
     m_activeUiRenderHandler = &uiRenderHandler;
@@ -2301,7 +2316,9 @@ void HelloTextureEngine::BeginFrame()
     // Set necessary state.
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
-    ID3D12DescriptorHeap* ppHeaps[] = {m_heap.Get(), m_stageAllocator.GetGpuHeap()};
+    // The single shader-visible heap includes both regular descriptors and
+    // the reserved staged region, so only one heap needs to be bound.
+    ID3D12DescriptorHeap* ppHeaps[] = {m_heap.Get()};
     m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     m_commandList->RSSetViewports(1, &m_viewport);

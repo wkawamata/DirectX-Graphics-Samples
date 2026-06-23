@@ -4,19 +4,35 @@
 
 #include <cstdio>
 
+// Helper: create a temporary shader-visible heap to pass to the allocator.
+static ComPtr<ID3D12DescriptorHeap> CreateTestExternalHeap(ID3D12Device* device, UINT count)
+{
+    D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+    desc.NumDescriptors = count;
+    desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    ComPtr<ID3D12DescriptorHeap> heap;
+    ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
+    return heap;
+}
+
 // Quick smoke test for StagedDescriptorAllocator.
 // Verifies allocation, staging, freeing, and growth.
 // Returns true on success.
 static bool RunStagedAllocatorTest(ID3D12Device* device)
 {
+    auto extHeap = CreateTestExternalHeap(device, 64);
+    D3D12_CPU_DESCRIPTOR_HANDLE mainCpu = extHeap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_GPU_DESCRIPTOR_HANDLE mainGpu = extHeap->GetGPUDescriptorHandleForHeapStart();
+
     StagedDescriptorAllocator alloc;
+    alloc.Init(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4,
+               mainCpu, mainGpu, 0, 64);
 
-    alloc.Init(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4);
-
-    // Allocate 3 slots (retireFenceValue=UINT64_MAX for standalone test)
-    auto a = alloc.Allocate(UINT64_MAX);
-    auto b = alloc.Allocate(UINT64_MAX);
-    auto c = alloc.Allocate(UINT64_MAX);
+    // Allocate 3 slots
+    auto a = alloc.Allocate();
+    auto b = alloc.Allocate();
+    auto c = alloc.Allocate();
 
     if (!a.IsValid() || !b.IsValid() || !c.IsValid())
     {
@@ -39,7 +55,7 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
         return false;
     }
 
-    auto d = alloc.Allocate(UINT64_MAX);
+    auto d = alloc.Allocate();
     if (!d.IsValid())
     {
         printf("FAIL: Re-allocate after free failed\n");
@@ -53,8 +69,8 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
     }
 
     // Trigger growth
-    alloc.Allocate(UINT64_MAX); // fills slot 0..3
-    auto e = alloc.Allocate(UINT64_MAX); // triggers Grow(4)
+    alloc.Allocate(); // fills slot 0..3
+    auto e = alloc.Allocate(); // triggers Grow(4)
 
     if (!e.IsValid())
     {
@@ -74,10 +90,9 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
         return false;
     }
 
-    // Stage() should not crash; UINT64_MAX releases all pending GPU heaps.
-    alloc.Stage(UINT64_MAX);
+    // Stage() should not crash.
+    alloc.Stage();
 
-    // Cleanup (Destroy called by destructor)
     printf("PASS: StagedDescriptorAllocator smoke test ok (cap=%u, used=%u)\n",
            alloc.Capacity(), alloc.Used());
 
@@ -87,11 +102,16 @@ static bool RunStagedAllocatorTest(ID3D12Device* device)
 // Test contiguous block allocation.
 static bool RunContiguousAllocTest(ID3D12Device* device)
 {
+    auto extHeap = CreateTestExternalHeap(device, 64);
+    D3D12_CPU_DESCRIPTOR_HANDLE mainCpu = extHeap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_GPU_DESCRIPTOR_HANDLE mainGpu = extHeap->GetGPUDescriptorHandleForHeapStart();
+
     StagedDescriptorAllocator alloc;
-    alloc.Init(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 8);
+    alloc.Init(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 8,
+               mainCpu, mainGpu, 0, 64);
 
     // AllocContiguous(1) should work (edge case from review-3).
-    auto single = alloc.AllocContiguous(1, UINT64_MAX);
+    auto single = alloc.AllocContiguous(1);
     if (!single.IsValid())
     {
         printf("FAIL: AllocContiguous(1) returned invalid handle\n");
@@ -107,7 +127,7 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
     }
 
     // Allocate a block of 3 contiguous slots.
-    auto block = alloc.AllocContiguous(3, UINT64_MAX);
+    auto block = alloc.AllocContiguous(3);
     if (!block.IsValid())
     {
         printf("FAIL: AllocContiguous returned invalid handle\n");
@@ -139,13 +159,12 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
     // Verify that a new Allocate() does not return any of the contiguous slots.
     for (UINT i = 0; i < 5; ++i)
     {
-        auto h = alloc.Allocate(UINT64_MAX);
+        auto h = alloc.Allocate();
         if (!h.IsValid())
         {
             printf("FAIL: Could not allocate after contiguous block\n");
             return false;
         }
-        // All 5 remaining slots should be distinct from the contiguous block.
         for (UINT j = 0; j < block.Count; ++j)
         {
             if (h.Index == block.Start + j)
@@ -167,14 +186,14 @@ static bool RunContiguousAllocTest(ID3D12Device* device)
     }
 
     // The freed contiguous range should now be reusable by a single AllocContiguous.
-    auto block3 = alloc.AllocContiguous(3, UINT64_MAX);
+    auto block3 = alloc.AllocContiguous(3);
     if (!block3.IsValid())
     {
         printf("FAIL: Re-allocation of freed contiguous block failed\n");
         return false;
     }
 
-    alloc.Stage(UINT64_MAX);
+    alloc.Stage();
 
     printf("PASS: ContiguousAlloc test ok\n");
     return true;

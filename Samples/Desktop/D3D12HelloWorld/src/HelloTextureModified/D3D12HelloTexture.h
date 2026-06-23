@@ -299,11 +299,13 @@ private:
     // Descriptor allocation order is tracked by DescriptorHeapHandle.
     // Current persistent descriptors: GBuffer SRVs, depth SRV, LightPass SRV, environment map SRVs,
     // texture table, instance buffers, material buffer, constant buffer, light constant buffer.
-    // ShadowMask descriptors live in a separate StagedDescriptorAllocator.
+    // ShadowMask descriptors live in a StagedDescriptorAllocator whose GPU
+    // copies are staged into a reserved range of the main shader-visible heap.
     static constexpr UINT kMainHeapDescriptorCount = kTextureCount + kInstanceBufferCount + kMaterialBufferCount +
-                                                     kEnvironmentMapDescriptorCount + kConstantBufferCount +
-                                                     kLightConstantBufferCount + Engine::GBuffer::kCount +
-                                                     PersistentSrvSlotCount;
+                                                      kEnvironmentMapDescriptorCount + kConstantBufferCount +
+                                                      kLightConstantBufferCount + Engine::GBuffer::kCount +
+                                                      PersistentSrvSlotCount;
+    static constexpr UINT kStagedDescriptorReservedCount = 64;
 
     static constexpr int kGpuWorkMeterQueryCount = 100;
 

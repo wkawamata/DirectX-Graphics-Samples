@@ -197,4 +197,104 @@ Review-5 推奨の小規模 trial として ShadowMask descriptor table を `Sta
 
 2. **STATIC_DESCRIPTOR_INVALID_DESCRIPTOR_CHANGE** (CopyDescriptorsSimple 実行時に GPU heap が bind されたまま)
    - `Stage()` が `PopulateCommandList()` 内の `BeginFrame()` 後で呼ばれていたため、GPU heap が既に command list に bind された後に `CopyDescriptorsSimple` が走っていた
-   - 対策: `Stage()` を `RenderFrame()` 先頭（`PopulateCommandList()` 前）に移動し、`m_graphicsDevice.CompletedFenceValue()` を使用。前フレームの GPU 作業完了後に GPU heap を更新する設計に変更。
+    - 対策: `Stage()` を `RenderFrame()` 先頭（`PopulateCommandList()` 前）に移動し、`m_graphicsDevice.CompletedFenceValue()` を使用。前フレームの GPU 作業完了後に GPU  heap を更新する設計に変更。
+
+### Step 3: Staged と Main を単一 GPU ヒープに統合 (本作業)
+
+`StagedDescriptorAllocator` が独自の GPU ヒープを持つのをやめ、`SimpleDescriptorHeapAllocator` と同じメイン GPU ヒープの予約領域にステージングするよう変更。
+
+#### 変更理由
+
+- `BeginFrame()` で 2 つの GPU ヒープ (`m_heap` + `GetGpuHeap()`) を bind していたが、ヒープ数が増えるとドライバのスケジューリングコストが増加する
+- 将来のフレームワーク統一に向けた布石
+
+#### 変更内容
+
+**StagedDescriptorAllocator.h:**
+- `Init()` のシグネチャ変更:
+  ```cpp
+  void Init(
+      ID3D12Device* device,
+      D3D12_DESCRIPTOR_HEAP_TYPE type,
+      UINT initialCapacity,
+      D3D12_CPU_DESCRIPTOR_HANDLE mainCpuStart,  // 外部 GPU ヒープの CPU ハンドル
+      D3D12_GPU_DESCRIPTOR_HANDLE mainGpuStart,   // 外部 GPU ヒープの GPU ハンドル
+      UINT stageOffset,                            // 予約領域開始オフセット
+      UINT reservedCount);                         // 予約最大スロット数
+  ```
+- プライベートな `m_cpuHeap` (非表示) は引き続き所有。全 Alloc/Free/Write はここに。
+- `m_gpuHeap` / `m_gpuCpuStart` / `m_pendingGpuHeaps` / `CollectCompletedGpuHeaps()` を削除。
+- `Stage()`: コピー先を `m_mainCpuStart + stageOffset` に変更。`CopyDescriptorsSimple` は変更なし。
+- `GpuHandle(slot)`: `m_mainGpuStart + (stageOffset + slot)` を返す。
+- `Grow()`: `assert(newCapacity <= reservedCount)` を追加。reservedCount を超える Grow はバグとみなす。
+- `Allocate()` / `AllocContiguous()`: `retireFenceValue` パラメータ削除（GPU ヒープを所有しないため不要）。
+- `GetGpuHeap()` を削除。
+
+**SimpleDescriptorHeapAllocator.h:**
+- `Init(device, heap)` に `capacity` パラメータ追加（既定値 `UINT_MAX`）。
+- メインヒープ拡大時に従来領域を超えないよう制限。
+
+**D3D12HelloTexture.h:**
+- `kStagedDescriptorReservedCount = 64` を追加。
+
+**D3D12HelloTexture.cpp:**
+- メインヒープを `kMainHeapDescriptorCount + kStagedDescriptorReservedCount` で作成。
+- `m_descriptorHeapAllocator.Init(..., kMainHeapDescriptorCount)` で通常領域に制限。
+- `m_stageAllocator.Init()` に外部ヒープのハンドル・オフセット・予約数を渡す。
+- `BeginFrame()`: `m_heap` のみ bind（`GetGpuHeap()` 削除）。
+- `RenderFrame()`: `Stage()` をフェンス無しで呼ぶ。
+- `CreateShadowMaskDescriptors()`: `AllocContiguous(2)` をフェンス無しで呼ぶ。
+
+**StagedDescriptorAllocator_Test.cpp:**
+- テスト用の外部 GPU ヒープ (`CreateTestExternalHeap()`) を作成して `Init()` に渡す。
+- `UINT64_MAX` パラメータを全て削除。
+
+#### 確認
+
+- ビルド成功 (Debug x64)
+- リンク成功、実行ファイル生成
+
+#### 実行時エラー
+
+```
+D3D12 ERROR: ID3D12CommandQueue1::ExecuteCommandLists:
+Descriptor (at CPU Handle 0x...) is bound as STATIC (not-DESCRIPTORS_VOLATILE)
+on Command List 0x.... It was most recently changed by CopyDescriptorsSimple call,
+but it is invalid to change it until the command list has finished executing
+for the last time.
+[ EXECUTION ERROR #1001: STATIC_DESCRIPTOR_INVALID_DESCRIPTOR_CHANGE]
+```
+
+#### 原因
+
+`Stage()` が `CopyDescriptorsSimple` でメイン GPU ヒープの予約領域を書き換える。
+旧設計では別々の GPU ヒープだったため問題にならなかったが、
+統合後は前フレームのコマンドリストが `m_heap` を STATIC バインドしたまま実行中に、
+次フレームの `Stage()` が同じヒープの内容を変更していると D3D12 が検出する。
+
+#### 対処案 (未実施)
+
+**案 A: `D3D12_DESCRIPTOR_HEAP_FLAG_DESCRIPTORS_VOLATILE` を追加**
+
+ヒープ作成時のフラグに `D3D12_DESCRIPTOR_HEAP_FLAG_DESCRIPTORS_VOLATILE` を追加する。
+一箇所の修正で済む。ドライバ最適化が一部効かなくなる可能性があるが、
+サンプルコードへの影響は無視できる。
+
+```cpp
+heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE |
+                 D3D12_DESCRIPTOR_HEAP_FLAG_DESCRIPTORS_VOLATILE;
+```
+
+**案 B: 予約領域をフレーム数分ダブルバッファリング**
+
+`kStagedDescriptorReservedCount` をフレーム数で分割し、
+フレームインデックスごとに異なるオフセットを使用する。
+前フレームの領域に書き込まないため STATIC 制約に違反しない。
+
+```
+Frame N: stageOffset = kMainHeapDescriptorCount + 0 * perFrameSize
+Frame N+1: stageOffset = kMainHeapDescriptorCount + 1 * perFrameSize
+```
+
+`SetFrameIndex(frameIndex)` を `Stage()` 前に呼び出し、
+`GpuHandle()` と `Stage()` が同一のオフセットを参照するよう同期する。
