@@ -7,20 +7,29 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <DirectXMath.h>
+#include <DirectXMathMatrix.inl>
+#include <DirectXMathVector.inl>
+#include <Windows.h>
+#include <cstdint>
+#include <cstdlib>
+#include <utility>
+#include <vector>
+#include "Scene.h"
 
 using DirectX::XMFLOAT2;
 using DirectX::XMFLOAT3;
+using DirectX::XMLoadFloat3;
+using DirectX::XMLoadFloat4;
+using DirectX::XMMATRIX;
+using DirectX::XMMatrixIdentity;
 using DirectX::XMMatrixRotationQuaternion;
 using DirectX::XMMatrixRotationRollPitchYaw;
 using DirectX::XMMatrixScaling;
 using DirectX::XMMatrixTranslation;
 using DirectX::XMMatrixTranspose;
-using DirectX::XMStoreFloat4x4;
-using DirectX::XMLoadFloat4;
-using DirectX::XMMatrixIdentity;
-using DirectX::XMMATRIX;
-using DirectX::XMLoadFloat3;
 using DirectX::XMStoreFloat3;
+using DirectX::XMStoreFloat4x4;
 using DirectX::XMVector3Transform;
 using DirectX::XMVector3TransformNormal;
 
@@ -108,11 +117,11 @@ SceneMesh CreatePlaneMesh(float sizeX, float sizeZ)
 
     mesh.vertices.resize(4);
     mesh.vertices[0] = {{-hx, 0.0f, -hz}, {0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}};
-    mesh.vertices[1] = {{ hx, 0.0f, -hz}, {1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}};
-    mesh.vertices[2] = {{ hx, 0.0f,  hz}, {1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
-    mesh.vertices[3] = {{-hx, 0.0f,  hz}, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+    mesh.vertices[1] = {{hx, 0.0f, -hz}, {1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}};
+    mesh.vertices[2] = {{hx, 0.0f, hz}, {1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+    mesh.vertices[3] = {{-hx, 0.0f, hz}, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
 
-    mesh.indices = {0, 1, 2, 0, 2, 3};
+    mesh.indices = {0, 2, 1, 0, 3, 2};
     return mesh;
 }
 
@@ -124,53 +133,48 @@ SceneMesh CreateCubeMesh(float size)
     mesh.vertices.resize(24);
     mesh.indices.resize(36);
 
-    const float nx[6][3] = {
-        { 1, 0, 0},  // +X
-        {-1, 0, 0},  // -X
-        { 0, 1, 0},  // +Y
-        { 0,-1, 0},  // -Y
-        { 0, 0, 1},  // +Z
-        { 0, 0,-1},  // -Z
-    };
-
-    const float verts[6][4][3] = {
-        // +X face
-        {{ h,-h,-h}, { h,-h, h}, { h, h, h}, { h, h,-h}},
-        // -X face
-        {{-h,-h, h}, {-h,-h,-h}, {-h, h,-h}, {-h, h, h}},
-        // +Y face
-        {{-h, h,-h}, { h, h,-h}, { h, h, h}, {-h, h, h}},
-        // -Y face
-        {{-h,-h, h}, { h,-h, h}, { h,-h,-h}, {-h,-h,-h}},
-        // +Z face
-        {{-h,-h, h}, { h,-h, h}, { h, h, h}, {-h, h, h}},
-        // -Z face
-        {{ h,-h,-h}, {-h,-h,-h}, {-h, h,-h}, { h, h,-h}},
-    };
-
-    const float uvs[4][2] = {{0,1}, {1,1}, {1,0}, {0,0}};
-
     uint32_t vi = 0;
     uint32_t ii = 0;
-    for (int face = 0; face < 6; face++)
+
+    const auto addFace = [&](const XMFLOAT3& normal,
+                             const XMFLOAT3& v0,
+                             const XMFLOAT3& v1,
+                             const XMFLOAT3& v2,
+                             const XMFLOAT3& v3,
+                             bool flipWinding = false)
     {
-        for (int v = 0; v < 4; v++)
+        const uint32_t base = vi;
+        mesh.vertices[vi++] = {v0, {0.0f, 1.0f}, normal};
+        mesh.vertices[vi++] = {v1, {1.0f, 1.0f}, normal};
+        mesh.vertices[vi++] = {v2, {1.0f, 0.0f}, normal};
+        mesh.vertices[vi++] = {v3, {0.0f, 0.0f}, normal};
+
+        if (flipWinding)
         {
-            mesh.vertices[vi] = {
-                {verts[face][v][0], verts[face][v][1], verts[face][v][2]},
-                {uvs[v][0], uvs[v][1]},
-                {nx[face][0], nx[face][1], nx[face][2]},
-            };
-            vi++;
+            mesh.indices[ii++] = base + 0;
+            mesh.indices[ii++] = base + 1;
+            mesh.indices[ii++] = base + 2;
+            mesh.indices[ii++] = base + 0;
+            mesh.indices[ii++] = base + 2;
+            mesh.indices[ii++] = base + 3;
         }
-        const uint32_t base = static_cast<uint32_t>(face * 4);
-        mesh.indices[ii++] = base + 0;
-        mesh.indices[ii++] = base + 1;
-        mesh.indices[ii++] = base + 2;
-        mesh.indices[ii++] = base + 0;
-        mesh.indices[ii++] = base + 2;
-        mesh.indices[ii++] = base + 3;
-    }
+        else
+        {
+            mesh.indices[ii++] = base + 0;
+            mesh.indices[ii++] = base + 2;
+            mesh.indices[ii++] = base + 1;
+            mesh.indices[ii++] = base + 0;
+            mesh.indices[ii++] = base + 3;
+            mesh.indices[ii++] = base + 2;
+        }
+    };
+
+    addFace({1.0f, 0.0f, 0.0f}, {h, -h, -h}, {h, -h, h}, {h, h, h}, {h, h, -h});
+    addFace({-1.0f, 0.0f, 0.0f}, {-h, -h, h}, {-h, -h, -h}, {-h, h, -h}, {-h, h, h});
+    addFace({0.0f, 1.0f, 0.0f}, {-h, h, -h}, {h, h, -h}, {h, h, h}, {-h, h, h});
+    addFace({0.0f, -1.0f, 0.0f}, {-h, -h, h}, {h, -h, h}, {h, -h, -h}, {-h, -h, -h});
+    addFace({0.0f, 0.0f, 1.0f}, {-h, -h, h}, {h, -h, h}, {h, h, h}, {-h, h, h}, true);
+    addFace({0.0f, 0.0f, -1.0f}, {h, -h, -h}, {-h, -h, -h}, {-h, h, -h}, {h, h, -h}, true);
 
     return mesh;
 }
@@ -457,22 +461,24 @@ XMFLOAT3 GltfGridScene::InstanceIdToXYZ(int instanceId)
             }
         }
 
-        std::sort(result.begin(), result.end(), [](const GridPoint& a, const GridPoint& b)
-        {
-            if (a.z != b.z)
-            {
-                return a.z < b.z;
-            }
-            if (a.dist2 != b.dist2)
-            {
-                return a.dist2 < b.dist2;
-            }
-            if (a.y != b.y)
-            {
-                return a.y < b.y;
-            }
-            return a.x < b.x;
-        });
+        std::sort(result.begin(),
+                  result.end(),
+                  [](const GridPoint& a, const GridPoint& b)
+                  {
+                      if (a.z != b.z)
+                      {
+                          return a.z < b.z;
+                      }
+                      if (a.dist2 != b.dist2)
+                      {
+                          return a.dist2 < b.dist2;
+                      }
+                      if (a.y != b.y)
+                      {
+                          return a.y < b.y;
+                      }
+                      return a.x < b.x;
+                  });
 
         return result;
     }();
@@ -619,8 +625,7 @@ void MetallicRoughnessSphereScene::CreateMaterialArray(int neutralTextureIndex, 
         const float roughness = Lerp(0.04f, 1.0f, static_cast<float>(row) / static_cast<float>(kSphereRows - 1));
         for (int column = 0; column < kSphereColumns; column++)
         {
-            const float metallic =
-                static_cast<float>(column) / static_cast<float>(kSphereColumns - 1);
+            const float metallic = static_cast<float>(column) / static_cast<float>(kSphereColumns - 1);
 
             SceneMaterial material = {};
             material.albedoTexIndex = neutralTextureIndex;
@@ -662,10 +667,7 @@ void MetallicRoughnessSphereScene::CreateInstances(const SampleSceneUpdateContex
     }
 }
 
-ShadowTestGroundCubesScene::ShadowTestGroundCubesScene(int maxInstanceCount)
-    : m_maxInstanceCount(maxInstanceCount)
-{
-}
+ShadowTestGroundCubesScene::ShadowTestGroundCubesScene(int maxInstanceCount) : m_maxInstanceCount(maxInstanceCount) {}
 
 const char* ShadowTestGroundCubesScene::Name() const
 {
@@ -891,7 +893,6 @@ void AnimatedShadowGridScene::Update(float deltaTime, const SampleSceneUpdateCon
 
 void AnimatedShadowGridScene::UpdateAnimations(float deltaTime, const SampleSceneUpdateContext& context)
 {
-    const float speed = context.isPlaying ? 1.0f : 0.0f;
     const int cubeCount = m_maxInstanceCount - 1;
     const int gridDim = static_cast<int>(std::ceil(std::sqrt(static_cast<float>(cubeCount))));
     const float spacing = 1.5f;
@@ -913,13 +914,13 @@ void AnimatedShadowGridScene::UpdateAnimations(float deltaTime, const SampleScen
         const float baseZ = static_cast<float>(row) * spacing - offset;
 
         const float animOffset = std::sin(m_accumTime * m_animData[i].rotSpeed + m_animData[i].phase) * 0.3f;
-        const float rotY = m_accumTime * m_animData[i].rotSpeed * speed + m_animData[i].phase;
+        const float rotY = m_accumTime * m_animData[i].rotSpeed + m_animData[i].phase;
         const float bounce = std::abs(std::sin(m_accumTime * 2.0f + m_animData[i].phase)) * 0.2f;
 
         const XMMATRIX scaleMat = XMMatrixScaling(context.meshScale, context.meshScale, context.meshScale);
         const XMMATRIX rotMat = XMMatrixRotationRollPitchYaw(rotY * 0.5f, rotY, rotY * 0.3f);
-        const XMMATRIX transMat = XMMatrixTranslation(
-            baseX + animOffset, context.meshScale * 0.5f + bounce, baseZ + animOffset * 0.5f);
+        const XMMATRIX transMat =
+            XMMatrixTranslation(baseX + animOffset, context.meshScale * 0.5f + bounce, baseZ + animOffset * 0.5f);
         const XMMATRIX dragRotMat = XMMatrixRotationQuaternion(XMLoadFloat4(&context.dragRotation));
         XMStoreFloat4x4(&m_scene.instances[i].world, XMMatrixTranspose(scaleMat * rotMat * dragRotMat * transMat));
     }
@@ -965,10 +966,7 @@ float AnimatedShadowGridScene::DefaultMeshScale() const
     return 0.6f;
 }
 
-ContactShadowTestScene::ContactShadowTestScene(int maxInstanceCount)
-    : m_maxInstanceCount(maxInstanceCount)
-{
-}
+ContactShadowTestScene::ContactShadowTestScene(int maxInstanceCount) : m_maxInstanceCount(maxInstanceCount) {}
 
 const char* ContactShadowTestScene::Name() const
 {
@@ -1083,10 +1081,7 @@ float ContactShadowTestScene::DefaultMeshScale() const
     return 1.0f;
 }
 
-OccluderWallTestScene::OccluderWallTestScene(int maxInstanceCount)
-    : m_maxInstanceCount(maxInstanceCount)
-{
-}
+OccluderWallTestScene::OccluderWallTestScene(int maxInstanceCount) : m_maxInstanceCount(maxInstanceCount) {}
 
 const char* OccluderWallTestScene::Name() const
 {

@@ -301,8 +301,23 @@ void SampleApp::OnMouseMove(int x, int y)
         m_lastMouseY = y;
 
         auto& camera = LoadedScene().GetScene().camera;
-        camera.pos.x += static_cast<float>(dx) * kMousePanSpeed;
-        camera.pos.y -= static_cast<float>(dy) * kMousePanSpeed;
+        if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+        {
+            camera.rot.x = std::clamp(
+                camera.rot.x + static_cast<float>(dy) * kMouseCameraRotationSpeed, -kCameraPitchLimit, kCameraPitchLimit);
+            camera.rot.y += static_cast<float>(dx) * kMouseCameraRotationSpeed;
+            return;
+        }
+
+        const XMVECTOR localPan =
+            XMVectorSet(static_cast<float>(dx) * kMousePanSpeed, -static_cast<float>(dy) * kMousePanSpeed, 0.0f, 0.0f);
+        const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+        const XMVECTOR worldPan = XMVector3TransformNormal(localPan, cameraRotation);
+        XMFLOAT3 pan = {};
+        XMStoreFloat3(&pan, worldPan);
+        camera.pos.x += pan.x;
+        camera.pos.y += pan.y;
+        camera.pos.z += pan.z;
     }
 }
 
