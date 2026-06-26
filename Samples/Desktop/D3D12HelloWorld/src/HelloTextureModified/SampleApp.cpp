@@ -373,6 +373,10 @@ void SampleApp::CreateSampleScenes()
     m_sampleScenes.push_back(std::make_unique<Engine::GltfGridScene>(static_cast<int>(kMaxInstanceCount)));
     m_sampleScenes.push_back(
         std::make_unique<Engine::MetallicRoughnessSphereScene>(static_cast<int>(kMaxInstanceCount)));
+    m_sampleScenes.push_back(std::make_unique<Engine::ShadowTestGroundCubesScene>(1));
+    m_sampleScenes.push_back(std::make_unique<Engine::AnimatedShadowGridScene>(64));
+    m_sampleScenes.push_back(std::make_unique<Engine::ContactShadowTestScene>(1));
+    m_sampleScenes.push_back(std::make_unique<Engine::OccluderWallTestScene>(1));
 }
 
 void SampleApp::LoadSceneCpuData(int sceneIndex)
