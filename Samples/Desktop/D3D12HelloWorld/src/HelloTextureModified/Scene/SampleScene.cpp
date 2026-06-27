@@ -275,6 +275,49 @@ void AppendTransformedMesh(SceneMesh& dest, const SceneMesh& src, DirectX::FXMMA
     }
 }
 
+struct MeshBounds
+{
+    DirectX::XMFLOAT3 min;
+    DirectX::XMFLOAT3 max;
+};
+
+MeshBounds ComputeMeshBounds(const SceneMesh& mesh)
+{
+    MeshBounds bounds = {};
+    if (mesh.vertices.empty())
+    {
+        bounds.min = {0.0f, 0.0f, 0.0f};
+        bounds.max = {0.0f, 0.0f, 0.0f};
+        return bounds;
+    }
+
+    DirectX::XMVECTOR vMin = XMLoadFloat3(&mesh.vertices[0].position);
+    DirectX::XMVECTOR vMax = vMin;
+
+    for (size_t i = 1; i < mesh.vertices.size(); i++)
+    {
+        DirectX::XMVECTOR p = XMLoadFloat3(&mesh.vertices[i].position);
+        vMin = DirectX::XMVectorMin(vMin, p);
+        vMax = DirectX::XMVectorMax(vMax, p);
+    }
+
+    XMStoreFloat3(&bounds.min, vMin);
+    XMStoreFloat3(&bounds.max, vMax);
+
+    return bounds;
+}
+
+float ComputeBoundingSphereRadius(const MeshBounds& bounds)
+{
+    DirectX::XMVECTOR vMin = XMLoadFloat3(&bounds.min);
+    DirectX::XMVECTOR vMax = XMLoadFloat3(&bounds.max);
+    DirectX::XMVECTOR half = DirectX::XMVectorScale(DirectX::XMVectorSubtract(vMax, vMin), 0.5f);
+    DirectX::XMVECTOR len = DirectX::XMVector3Length(half);
+    float radius;
+    DirectX::XMStoreFloat(&radius, len);
+    return radius;
+}
+
 } // namespace
 
 GltfGridBenchmarkScene::GltfGridBenchmarkScene(const GltfAssetDesc& assetDesc, int maxInstanceCount)
@@ -522,13 +565,34 @@ void GltfObjectViewerScene::Load()
 
 void GltfObjectViewerScene::Reset()
 {
-    m_scene.camera.pos = {0.0f, 0.0f, m_assetDesc.cameraDistance};
     m_scene.camera.rot = {0.0f, 0.0f, 0.0f};
     m_scene.camera.fov = 60.0f;
 
+    // Compute mesh bounds and derive auto camera distance
+    const MeshBounds bounds = ComputeMeshBounds(m_mesh);
+    const float radius = ComputeBoundingSphereRadius(bounds);
+    const float baseScale = m_assetDesc.meshScale;
+    const float baseWorldRadius = radius * baseScale;
+    const float minSourceRadius = 0.0001f;
+    const float minViewerRadius = 0.5f;
+    const float displayScale =
+        baseWorldRadius > 0.0f ? baseScale * ((std::max)(baseWorldRadius, minViewerRadius) / baseWorldRadius)
+                               : baseScale;
+    const float effectiveRadius = (std::max)(radius * displayScale, minSourceRadius);
+    const float fovRadians = DirectX::XMConvertToRadians(m_scene.camera.fov);
+    const float distance = effectiveRadius / std::tan(fovRadians * 0.5f) * 2.5f;
+    m_scene.camera.pos = {0.0f, 0.0f, -distance};
+
+    // Center instance at bounds center so the model is viewed around its origin
     m_scene.instances.resize(1);
-    const float scale = m_assetDesc.meshScale;
-    const XMMATRIX transform = XMMatrixScaling(scale, scale, scale);
+    DirectX::XMVECTOR vCenter = DirectX::XMVectorScale(
+        DirectX::XMVectorAdd(XMLoadFloat3(&bounds.min), XMLoadFloat3(&bounds.max)), 0.5f);
+    XMFLOAT3 center;
+    XMStoreFloat3(&center, vCenter);
+    const XMMATRIX transform = XMMatrixScaling(displayScale, displayScale, displayScale) *
+                               XMMatrixTranslation(-center.x * displayScale,
+                                                   -center.y * displayScale,
+                                                   -center.z * displayScale);
     XMStoreFloat4x4(&m_scene.instances[0].world, XMMatrixTranspose(transform));
     m_scene.instances[0].prevWorld = m_scene.instances[0].world;
     m_scene.instances[0].materialId = 0;
