@@ -416,8 +416,8 @@ void SampleApp::CreateSampleScenes()
 
     static const Engine::GltfAssetDesc gltfAssets[] = {
         {"DamagedHelmet", "Assets\\Models\\DamagedHelmet\\glTF\\DamagedHelmet.gltf", -10.0f, 0.5f},
-        {"Avocado", nullptr, -10.0f, 0.5f},
-        {"BoomBox", nullptr, -10.0f, 0.5f},
+        {"Avocado", "Assets\\Models\\Avocado\\glTF\\Avocado.gltf", -10.0f, 0.35f},
+        {"BoomBox", "Assets\\Models\\BoomBox\\glTF\\BoomBox.gltf", -6.0f, 1.0f},
         {"Lantern", nullptr, -10.0f, 0.5f},
         {"Sponza", nullptr, -10.0f, 0.5f},
         {"FlightHelmet", nullptr, -10.0f, 0.5f},
