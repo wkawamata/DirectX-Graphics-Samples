@@ -1,4 +1,4 @@
-﻿// GltfLoader.cpp
+// GltfLoader.cpp
 #include "stdafx.h"
 
 #include "GltfLoader.h"
@@ -15,6 +15,16 @@ static const unsigned char* GetAccessorData(const tinygltf::Model& model, const 
     const auto& buffer = model.buffers[view.buffer];
 
     return buffer.data.data() + view.byteOffset + accessor.byteOffset;
+}
+
+static DirectX::XMFLOAT3 ConvertGltfVectorToEngineLH(float x, float y, float z)
+{
+    return {x, y, -z};
+}
+
+static DirectX::XMFLOAT4 ConvertGltfTangentToEngineLH(float x, float y, float z, float w)
+{
+    return {x, y, -z, -w};
 }
 
 bool LoadGltfMesh(const std::string& path, GltfMeshData& outMesh)
@@ -96,11 +106,11 @@ bool LoadGltfMesh(const std::string& path, GltfMeshData& outMesh)
     {
         GltfVertex v = {};
 
-        v.position = {positions[i * 3 + 0], positions[i * 3 + 1], positions[i * 3 + 2]};
+        v.position = ConvertGltfVectorToEngineLH(positions[i * 3 + 0], positions[i * 3 + 1], positions[i * 3 + 2]);
 
         if (normals)
         {
-            v.normal = {normals[i * 3 + 0], normals[i * 3 + 1], normals[i * 3 + 2]};
+            v.normal = ConvertGltfVectorToEngineLH(normals[i * 3 + 0], normals[i * 3 + 1], normals[i * 3 + 2]);
         }
         else
         {
@@ -118,7 +128,8 @@ bool LoadGltfMesh(const std::string& path, GltfMeshData& outMesh)
 
         if (tangents)
         {
-            v.tangent = {tangents[i * 4 + 0], tangents[i * 4 + 1], tangents[i * 4 + 2], tangents[i * 4 + 3]};
+            v.tangent = ConvertGltfTangentToEngineLH(
+                tangents[i * 4 + 0], tangents[i * 4 + 1], tangents[i * 4 + 2], tangents[i * 4 + 3]);
         }
 
         outMesh.vertices[i] = v;
@@ -153,6 +164,12 @@ bool LoadGltfMesh(const std::string& path, GltfMeshData& outMesh)
     else
     {
         return false;
+    }
+
+    // The Z mirror above flips triangle winding, so restore front faces for the LH renderer.
+    for (size_t i = 0; i + 2 < outMesh.indices.size(); i += 3)
+    {
+        std::swap(outMesh.indices[i + 1], outMesh.indices[i + 2]);
     }
 
     // load material

@@ -1366,7 +1366,14 @@ void HelloTextureEngine::CreateSceneTextureResources(std::vector<ComPtr<ID3D12Re
         }
         else
         {
-            texture[i] = GenerateCheckerboardTextureData();
+            if (i == mesh.textures.size())
+            {
+                texture[i] = GenerateSolidTextureData(0, 0, 0, 255);
+            }
+            else
+            {
+                texture[i] = GenerateCheckerboardTextureData();
+            }
             pixels = &texture[i % kTextureTypes][0];
             width = kTextureWidth;
             height = kTextureHeight;
@@ -1409,6 +1416,8 @@ void HelloTextureEngine::CreateSceneMaterialResources()
         }
         return fallbackIndex;
     };
+    const UINT blackFallbackTexIndex =
+        m_sceneTextureCount < kTextureCount ? m_texIndex[m_sceneTextureCount] : m_texIndex[0];
 
     for (int i = 0; i < Engine::kMaterialCount; i++)
     {
@@ -1434,7 +1443,7 @@ void HelloTextureEngine::CreateSceneMaterialResources()
                 m.albedoTexIndex = resolveTextureIndex(gltfMaterial.albedoTexIndex, fallbackTexIndex);
                 m.metallicRoughnessTexIndex =
                     resolveTextureIndex(gltfMaterial.metallicRoughnessTexIndex, fallbackTexIndex);
-                m.emissiveTexIndex = resolveTextureIndex(gltfMaterial.emissiveTexIndex, fallbackTexIndex);
+                m.emissiveTexIndex = resolveTextureIndex(gltfMaterial.emissiveTexIndex, blackFallbackTexIndex);
                 m.occlusionTexIndex = resolveTextureIndex(gltfMaterial.occlusionTexIndex, fallbackTexIndex);
                 m.normalTexIndex = resolveTextureIndex(gltfMaterial.normalTexIndex, fallbackTexIndex);
                 if (gltfMaterial.normalTexIndex >= 0)
@@ -1445,7 +1454,7 @@ void HelloTextureEngine::CreateSceneMaterialResources()
                 m.metallicFactor = gltfMaterial.metallicFactor;
                 m.occlusionStrength = gltfMaterial.occlusionStrength;
                 m.ambientOcclusionFactor = gltfMaterial.ambientOcclusionFactor;
-                m.emissiveScale = gltfMaterial.emissiveScale;
+                m.emissiveScale = gltfMaterial.emissiveTexIndex >= 0 ? gltfMaterial.emissiveScale : 0.0f;
             }
         }
 
@@ -1691,6 +1700,22 @@ std::vector<UINT8> HelloTextureEngine::GenerateCheckerboardTextureData()
     return data;
 }
 
+std::vector<UINT8> HelloTextureEngine::GenerateSolidTextureData(UINT8 r, UINT8 g, UINT8 b, UINT8 a)
+{
+    const UINT textureSize = kTextureWidth * kTextureHeight * kTexturePixelSize;
+    std::vector<UINT8> data(textureSize);
+
+    for (UINT n = 0; n < textureSize; n += kTexturePixelSize)
+    {
+        data[n + 0] = r;
+        data[n + 1] = g;
+        data[n + 2] = b;
+        data[n + 3] = a;
+    }
+
+    return data;
+}
+
 void HelloTextureEngine::CreateDsvHeap()
 {
     if (m_dsvHeap)
@@ -1886,6 +1911,8 @@ void HelloTextureEngine::RegisterPassBindingResolvers()
                                                 [this]() { return GetGBufferRTV(Engine::GBuffer::MotionVector); });
     m_renderGraphRuntime.Bindings().RegisterRtv(m_renderGraphRuntime.RegisterRtv(RtvName::GBufferPBRParams),
                                                 [this]() { return GetGBufferRTV(Engine::GBuffer::PBRParams); });
+    m_renderGraphRuntime.Bindings().RegisterRtv(m_renderGraphRuntime.RegisterRtv(RtvName::GBufferEmissive),
+                                                [this]() { return GetGBufferRTV(Engine::GBuffer::Emissive); });
     m_renderGraphRuntime.Bindings().RegisterRtv(m_renderGraphRuntime.RegisterRtv(RtvName::LightPass),
                                                 [this]() { return GetLightPassRTV(); });
 

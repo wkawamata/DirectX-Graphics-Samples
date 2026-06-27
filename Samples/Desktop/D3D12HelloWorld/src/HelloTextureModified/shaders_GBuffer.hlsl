@@ -26,6 +26,7 @@ struct GBufferOutput
     uint material : SV_Target2;
     float2 motionVector : SV_Target3;
     float4 pbrParams : SV_Target4;
+    float4 emissive : SV_Target5;
 };
 
 Texture2D g_texture[] : register(t0, space0);
@@ -112,8 +113,8 @@ GBufferOutput PSMain(PSInput input)
     float roughness = saturate(metallicRoughness.g * mat.roughnessFactor);
     // Indirect Occlusion is an artist/debug multiplier applied after glTF occlusionStrength.
     float ambientOcclusion = saturate(lerp(1.0, occlusion, mat.occlusionStrength) * mat.ambientOcclusionFactor);
-    float emissiveLuminance = saturate(dot(emissive, float3(0.2126, 0.7152, 0.0722)) * mat.emissiveScale);
-    output.pbrParams = float4(metallic, roughness, ambientOcclusion, emissiveLuminance);
+    output.pbrParams = float4(metallic, roughness, ambientOcclusion, 1.0);
+    output.emissive = float4(emissive * mat.emissiveScale, 1.0);
     
     return output;
 }

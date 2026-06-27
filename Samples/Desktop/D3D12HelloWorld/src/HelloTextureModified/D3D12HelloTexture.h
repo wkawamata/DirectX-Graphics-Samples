@@ -84,6 +84,7 @@ public:
         GBufferMaterial,
         GBufferMotionVector,
         GBufferPBRParams,
+        GBufferEmissive,
         Depth,
         ReflectionDirection,
         ViewDirection,
@@ -250,6 +251,7 @@ private:
             static constexpr const char* GBufferMaterial = "GBufferMaterial";
             static constexpr const char* GBufferMotionVector = "GBufferMotionVector";
             static constexpr const char* GBufferPBRParams = "GBufferPBRParams";
+            static constexpr const char* GBufferEmissive = "GBufferEmissive";
             static constexpr const char* LightPass = "LightPass";
         };
 
@@ -550,7 +552,12 @@ private:
     static constexpr const char* kDepthStencilResourceName = "DepthStencil";
     static constexpr const char* kLightPassRenderTargetResourceName = "LightPass.RenderTarget";
     static constexpr const char* kGBufferResourceNames[Engine::GBuffer::kCount] = {
-        "GBuffer.Albedo", "GBuffer.Normal", "GBuffer.Material", "GBuffer.MotionVector", "GBuffer.PBRParams"};
+        "GBuffer.Albedo",
+        "GBuffer.Normal",
+        "GBuffer.Material",
+        "GBuffer.MotionVector",
+        "GBuffer.PBRParams",
+        "GBuffer.Emissive"};
     static constexpr const char* kShadowMaskResourceName = "ShadowMask";
 
     using TransientResourceState = Engine::TransientResourceState;
@@ -686,6 +693,7 @@ private:
     void RegisterResourceResolvers();
 
     std::vector<UINT8> GenerateCheckerboardTextureData();
+    std::vector<UINT8> GenerateSolidTextureData(UINT8 r, UINT8 g, UINT8 b, UINT8 a);
     void PopulateCommandList();
 
     void AddPass(RenderPass pass);
