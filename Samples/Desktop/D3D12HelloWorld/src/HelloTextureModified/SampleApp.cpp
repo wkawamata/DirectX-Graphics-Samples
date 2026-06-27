@@ -196,39 +196,50 @@ void SampleApp::UpdateSampleState()
     {
         auto& camera = LoadedScene().GetScene().camera;
 
-        XMVECTOR localMove = XMVectorZero();
-        if (GetAsyncKeyState('A') & 0x8000)
+        if (m_cameraMode == CameraMode::Free)
         {
-            localMove = XMVectorAdd(localMove, XMVectorSet(-kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
-        }
-        if (GetAsyncKeyState('D') & 0x8000)
-        {
-            localMove = XMVectorAdd(localMove, XMVectorSet(kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
-        }
-        if ((GetAsyncKeyState('W') & 0x8000) && (GetAsyncKeyState(VK_CONTROL) & 0x8000))
-        {
-            localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, -kCameraMoveSpeed, 0.0f, 0.0f));
-        }
-        if ((GetAsyncKeyState('S') & 0x8000) && (GetAsyncKeyState(VK_CONTROL) & 0x8000))
-        {
-            localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, kCameraMoveSpeed, 0.0f, 0.0f));
-        }
-        if ((GetAsyncKeyState('W') & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000))
-        {
-            localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, kCameraMoveSpeed, 0.0f));
-        }
-        if ((GetAsyncKeyState('S') & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000))
-        {
-            localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, -kCameraMoveSpeed, 0.0f));
-        }
+            XMVECTOR localMove = XMVectorZero();
+            if (GetAsyncKeyState('A') & 0x8000)
+            {
+                localMove = XMVectorAdd(localMove, XMVectorSet(-kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
+            }
+            if (GetAsyncKeyState('D') & 0x8000)
+            {
+                localMove = XMVectorAdd(localMove, XMVectorSet(kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
+            }
+            if ((GetAsyncKeyState('W') & 0x8000) && (GetAsyncKeyState(VK_CONTROL) & 0x8000))
+            {
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, -kCameraMoveSpeed, 0.0f, 0.0f));
+            }
+            if ((GetAsyncKeyState('S') & 0x8000) && (GetAsyncKeyState(VK_CONTROL) & 0x8000))
+            {
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, kCameraMoveSpeed, 0.0f, 0.0f));
+            }
+            if ((GetAsyncKeyState('W') & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000))
+            {
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, kCameraMoveSpeed, 0.0f));
+            }
+            if ((GetAsyncKeyState('S') & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000))
+            {
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, -kCameraMoveSpeed, 0.0f));
+            }
 
-        const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
-        const XMVECTOR worldMove = XMVector3TransformNormal(localMove, cameraRotation);
-        XMFLOAT3 move = {};
-        XMStoreFloat3(&move, worldMove);
-        camera.pos.x += move.x;
-        camera.pos.y += move.y;
-        camera.pos.z = std::clamp(camera.pos.z + move.z, kCameraMinZ, kCameraMaxZ);
+            const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+            const XMVECTOR worldMove = XMVector3TransformNormal(localMove, cameraRotation);
+            XMFLOAT3 move = {};
+            XMStoreFloat3(&move, worldMove);
+            camera.pos.x += move.x;
+            camera.pos.y += move.y;
+            camera.pos.z = std::clamp(camera.pos.z + move.z, kCameraMinZ, kCameraMaxZ);
+
+            const XMMATRIX camRot = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+            const XMVECTOR forward = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), camRot);
+            XMStoreFloat3(&camera.gazePoint, XMLoadFloat3(&camera.pos) + forward);
+        }
+        else
+        {
+            UpdateObjectViewerCamera();
+        }
     }
 
     Engine::SampleSceneUpdateContext sceneUpdate = {};
@@ -304,41 +315,97 @@ void SampleApp::OnMouseMove(int x, int y)
         return;
     }
 
-    if (m_isDragging)
+    if (m_cameraMode == CameraMode::Free)
     {
-        m_lastMouseX = x;
-        m_lastMouseY = y;
-        const XMFLOAT3 currentArcballVector = ProjectToArcball(x, y, GetWidth(), GetHeight());
-        const XMFLOAT4 deltaRotation = ArcballDeltaQuaternion(currentArcballVector, m_lastArcballVector);
-        m_lastArcballVector = currentArcballVector;
-        const XMVECTOR rotation = XMQuaternionMultiply(XMLoadFloat4(&m_dragRotation), XMLoadFloat4(&deltaRotation));
-        XMStoreFloat4(&m_dragRotation, XMQuaternionNormalize(rotation));
-    }
-    else if (m_isMiddleDragging)
-    {
-        const int dx = x - m_lastMouseX;
-        const int dy = y - m_lastMouseY;
-        m_lastMouseX = x;
-        m_lastMouseY = y;
-
-        auto& camera = LoadedScene().GetScene().camera;
-        if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+        if (m_isDragging)
         {
-            camera.rot.x = std::clamp(
-                camera.rot.x + static_cast<float>(dy) * kMouseCameraRotationSpeed, -kCameraPitchLimit, kCameraPitchLimit);
-            camera.rot.y += static_cast<float>(dx) * kMouseCameraRotationSpeed;
-            return;
+            m_lastMouseX = x;
+            m_lastMouseY = y;
+            const XMFLOAT3 currentArcballVector = ProjectToArcball(x, y, GetWidth(), GetHeight());
+            const XMFLOAT4 deltaRotation = ArcballDeltaQuaternion(currentArcballVector, m_lastArcballVector);
+            m_lastArcballVector = currentArcballVector;
+            const XMVECTOR rotation = XMQuaternionMultiply(XMLoadFloat4(&m_dragRotation), XMLoadFloat4(&deltaRotation));
+            XMStoreFloat4(&m_dragRotation, XMQuaternionNormalize(rotation));
         }
+        else if (m_isMiddleDragging)
+        {
+            const int dx = x - m_lastMouseX;
+            const int dy = y - m_lastMouseY;
+            m_lastMouseX = x;
+            m_lastMouseY = y;
 
-        const XMVECTOR localPan =
-            XMVectorSet(static_cast<float>(dx) * kMousePanSpeed, -static_cast<float>(dy) * kMousePanSpeed, 0.0f, 0.0f);
-        const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
-        const XMVECTOR worldPan = XMVector3TransformNormal(localPan, cameraRotation);
-        XMFLOAT3 pan = {};
-        XMStoreFloat3(&pan, worldPan);
-        camera.pos.x += pan.x;
-        camera.pos.y += pan.y;
-        camera.pos.z += pan.z;
+            auto& camera = LoadedScene().GetScene().camera;
+            if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+            {
+                camera.rot.x = std::clamp(camera.rot.x + static_cast<float>(dy) * kMouseCameraRotationSpeed,
+                                          -kCameraPitchLimit, kCameraPitchLimit);
+                camera.rot.y += static_cast<float>(dx) * kMouseCameraRotationSpeed;
+                return;
+            }
+
+            const XMVECTOR localPan = XMVectorSet(static_cast<float>(dx) * kMousePanSpeed,
+                                                  -static_cast<float>(dy) * kMousePanSpeed, 0.0f, 0.0f);
+            const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+            const XMVECTOR worldPan = XMVector3TransformNormal(localPan, cameraRotation);
+            XMFLOAT3 pan = {};
+            XMStoreFloat3(&pan, worldPan);
+            camera.pos.x += pan.x;
+            camera.pos.y += pan.y;
+            camera.pos.z += pan.z;
+        }
+    }
+    else
+    {
+        if (m_isDragging)
+        {
+            const int dx = x - m_lastMouseX;
+            int dy = y - m_lastMouseY;
+            m_lastMouseX = x;
+            m_lastMouseY = y;
+            if (std::abs(dy) <= kObjectViewerOrbitPitchDeadZonePixels)
+            {
+                dy = 0;
+            }
+
+            auto& camera = LoadedScene().GetScene().camera;
+            const XMVECTOR pivot = XMLoadFloat3(&m_objectViewerPivot);
+            XMVECTOR offset = XMLoadFloat3(&camera.pos) - pivot;
+            if (dx != 0)
+            {
+                const XMMATRIX yawRotation =
+                    XMMatrixRotationY(static_cast<float>(dx) * kMouseCameraRotationSpeed);
+                offset = XMVector3TransformNormal(offset, yawRotation);
+            }
+            if (dy != 0)
+            {
+                const XMVECTOR lookDir = XMVector3Normalize(-offset);
+                const XMVECTOR right = XMVector3Normalize(
+                    XMVector3Cross(XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f), lookDir));
+                const XMMATRIX pitchRotation =
+                    XMMatrixRotationAxis(right, static_cast<float>(dy) * kMouseCameraRotationSpeed);
+                offset = XMVector3TransformNormal(offset, pitchRotation);
+            }
+            SetObjectViewerOrbitFromOffset(offset);
+            UpdateObjectViewerCamera();
+        }
+        else if (m_isMiddleDragging)
+        {
+            const int dx = x - m_lastMouseX;
+            const int dy = y - m_lastMouseY;
+            m_lastMouseX = x;
+            m_lastMouseY = y;
+
+            const auto& camera = LoadedScene().GetScene().camera;
+            const XMVECTOR localPan = XMVectorSet(static_cast<float>(dx) * kObjectViewerPanSpeed,
+                                                  -static_cast<float>(dy) * kObjectViewerPanSpeed, 0.0f, 0.0f);
+            const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+            const XMVECTOR worldPan = XMVector3TransformNormal(localPan, cameraRotation);
+            XMFLOAT3 pan = {};
+            XMStoreFloat3(&pan, worldPan);
+            m_objectViewerPivot.x += pan.x;
+            m_objectViewerPivot.y += pan.y;
+            m_objectViewerPivot.z += pan.z;
+        }
     }
 }
 
@@ -358,14 +425,22 @@ void SampleApp::OnMouseWheel(int wheelDelta)
         return;
     }
 
-    const XMVECTOR localMove = XMVectorSet(0.0f, 0.0f, wheelSteps * kMouseWheelCameraSpeed, 0.0f);
-    const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
-    const XMVECTOR worldMove = XMVector3TransformNormal(localMove, cameraRotation);
-    XMFLOAT3 move = {};
-    XMStoreFloat3(&move, worldMove);
-    camera.pos.x += move.x;
-    camera.pos.y += move.y;
-    camera.pos.z = std::clamp(camera.pos.z + move.z, kCameraMinZ, kCameraMaxZ);
+    if (m_cameraMode == CameraMode::Free)
+    {
+        const XMVECTOR localMove = XMVectorSet(0.0f, 0.0f, wheelSteps * kMouseWheelCameraSpeed, 0.0f);
+        const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+        const XMVECTOR worldMove = XMVector3TransformNormal(localMove, cameraRotation);
+        XMFLOAT3 move = {};
+        XMStoreFloat3(&move, worldMove);
+        camera.pos.x += move.x;
+        camera.pos.y += move.y;
+        camera.pos.z = std::clamp(camera.pos.z + move.z, kCameraMinZ, kCameraMaxZ);
+    }
+    else
+    {
+        m_objectViewerDistance -= wheelSteps * kObjectViewerDollySpeed;
+        m_objectViewerDistance = (std::max)(0.1f, m_objectViewerDistance);
+    }
 }
 
 void SampleApp::OnWindowSizeChanged(UINT width, UINT height)
@@ -465,7 +540,14 @@ void SampleApp::LoadSceneCpuData(int sceneIndex)
     m_selectedMaterialIndex = 0;
     m_lastArcballVector = {0.0f, 0.0f, 1.0f};
     m_dragRotation = {0.0f, 0.0f, 0.0f, 1.0f};
+    m_objectViewerPivot = {0.0f, 0.0f, 0.0f};
     m_sceneResourcesLoaded = false;
+
+    m_cameraMode = IsGltfViewerSceneIndex(m_loadedSceneIndex) ? CameraMode::ObjectViewer : CameraMode::Free;
+    if (m_cameraMode == CameraMode::ObjectViewer)
+    {
+        InitObjectViewerFromCamera();
+    }
 }
 
 void SampleApp::OpenSelectedScene()
@@ -497,6 +579,60 @@ void SampleApp::CloseRunningScene()
     m_sceneResourcesLoaded = false;
     m_engine.SetDisplayInstanceCount(0);
     m_engine.CloseSceneResources();
+}
+
+bool SampleApp::IsGltfViewerSceneIndex(int index) const
+{
+    return index >= 0 && index < m_gltfViewerCount;
+}
+
+void SampleApp::InitObjectViewerFromCamera()
+{
+    auto& camera = LoadedScene().GetScene().camera;
+    const XMVECTOR pivot = XMLoadFloat3(&m_objectViewerPivot);
+    const XMVECTOR camPos = XMLoadFloat3(&camera.pos);
+    SetObjectViewerOrbitFromOffset(camPos - pivot);
+}
+
+void SampleApp::SetObjectViewerOrbitFromOffset(DirectX::FXMVECTOR offset)
+{
+    m_objectViewerDistance = XMVectorGetX(XMVector3Length(offset));
+    if (m_objectViewerDistance < 0.001f)
+    {
+        m_objectViewerDistance = 5.0f;
+        m_objectViewerYaw = 0.0f;
+        m_objectViewerPitch = 0.0f;
+        return;
+    }
+    const XMVECTOR dir = XMVector3Normalize(offset);
+    XMFLOAT3 dirF = {};
+    XMStoreFloat3(&dirF, dir);
+    m_objectViewerYaw = std::atan2(dirF.x, dirF.z);
+    m_objectViewerPitch = std::asin(std::clamp(dirF.y, -1.0f, 1.0f));
+}
+
+void SampleApp::UpdateObjectViewerCamera()
+{
+    auto& camera = LoadedScene().GetScene().camera;
+    m_objectViewerPitch = std::clamp(m_objectViewerPitch, -kObjectViewerPitchLimit, kObjectViewerPitchLimit);
+
+    const float cp = std::cos(m_objectViewerPitch);
+    const float sp = std::sin(m_objectViewerPitch);
+    const float cy = std::cos(m_objectViewerYaw);
+    const float sy = std::sin(m_objectViewerYaw);
+    camera.pos.x = m_objectViewerPivot.x + m_objectViewerDistance * cp * sy;
+    camera.pos.y = m_objectViewerPivot.y + m_objectViewerDistance * sp;
+    camera.pos.z = m_objectViewerPivot.z + m_objectViewerDistance * cp * cy;
+
+    const XMVECTOR toPivot = XMLoadFloat3(&m_objectViewerPivot) - XMLoadFloat3(&camera.pos);
+    const XMVECTOR dir = XMVector3Normalize(toPivot);
+    XMFLOAT3 dirF = {};
+    XMStoreFloat3(&dirF, dir);
+    camera.rot.x = std::asin(std::clamp(dirF.y, -1.0f, 1.0f));
+    camera.rot.y = std::atan2(dirF.x, dirF.z);
+    camera.rot.z = 0.0f;
+
+    camera.gazePoint = m_objectViewerPivot;
 }
 
 void SampleApp::InitializeImGui()
@@ -632,6 +768,15 @@ void SampleApp::DrawDebugUi(const HelloTextureEngine::UiFrameContext& context)
         loadedScene.SetDisplayInstanceCount(m_displayInstanceCount);
         ImGuiWidgets::SliderFloatWithControls("Mesh Scale", &m_meshScale, 0.1f, 2.0f, 0.05f, 0.5f);
         ImGuiWidgets::SliderFloatWithControls("Camera FovH", &loadedScene.GetScene().camera.fov, 20.f, 150.f, 5.f, 60.f);
+        int cameraMode = static_cast<int>(m_cameraMode);
+        if (ImGui::Combo("Camera Mode", &cameraMode, "Free\0ObjectViewer\0"))
+        {
+            m_cameraMode = static_cast<CameraMode>(cameraMode);
+            if (m_cameraMode == CameraMode::ObjectViewer)
+            {
+                InitObjectViewerFromCamera();
+            }
+        }
         ImGui::ColorEdit4("Background Color", m_backBufferClearColor.data());
     }
     if (ImGui::CollapsingHeader("PBR Lighting", ImGuiTreeNodeFlags_DefaultOpen))

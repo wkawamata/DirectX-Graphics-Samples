@@ -40,6 +40,12 @@ public:
     void UpdateSampleState();
 
 private:
+    enum class CameraMode
+    {
+        Free,
+        ObjectViewer,
+    };
+
     enum class AppMode
     {
         SceneSelect,
@@ -65,6 +71,10 @@ private:
     static constexpr float kMouseWheelCameraSpeed = 0.25f;
     static constexpr float kMouseWheelFovSpeed = 1.0f;
     static constexpr float kCameraPitchLimit = 1.5f;
+    static constexpr float kObjectViewerDollySpeed = 0.5f;
+    static constexpr float kObjectViewerPanSpeed = 0.008f;
+    static constexpr float kObjectViewerPitchLimit = 1.4f;
+    static constexpr int kObjectViewerOrbitPitchDeadZonePixels = 3;
     static constexpr float kCameraMinZ = -100.0f;
     static constexpr float kCameraMaxZ = 100.0f;
     static constexpr UINT kImGuiDescriptorCount = 100;
@@ -102,6 +112,17 @@ private:
     XMFLOAT3 m_lastArcballVector = {0.0f, 0.0f, 1.0f};
     XMFLOAT4 m_dragRotation = {0.0f, 0.0f, 0.0f, 1.0f};
     XMFLOAT2 m_dragPan = {0.0f, 0.0f};
+
+    CameraMode m_cameraMode = CameraMode::Free;
+    float m_objectViewerYaw = 0.0f;
+    float m_objectViewerPitch = 0.0f;
+    float m_objectViewerDistance = 5.0f;
+    XMFLOAT3 m_objectViewerPivot = {0.0f, 0.0f, 0.0f};
+
+    void InitObjectViewerFromCamera();
+    void SetObjectViewerOrbitFromOffset(DirectX::FXMVECTOR offset);
+    void UpdateObjectViewerCamera();
+    bool IsGltfViewerSceneIndex(int index) const;
 
     std::chrono::steady_clock::time_point m_prevTime;
 

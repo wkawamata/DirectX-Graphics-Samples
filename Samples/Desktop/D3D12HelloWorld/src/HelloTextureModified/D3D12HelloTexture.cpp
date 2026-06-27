@@ -386,10 +386,10 @@ void HelloTextureEngine::ReloadEnvironmentResources(const Engine::ProceduralEnvi
 void HelloTextureEngine::UpdateCameraConstantBuffer()
 {
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const XMMATRIX rotMat =
-        XMMatrixRotationRollPitchYaw(m_scene.camera.rot.x, m_scene.camera.rot.y, m_scene.camera.rot.z);
-    const XMMATRIX transMat = XMMatrixTranslation(m_scene.camera.pos.x, m_scene.camera.pos.y, m_scene.camera.pos.z);
-    const XMMATRIX view = XMMatrixInverse(nullptr, rotMat * transMat);
+    const XMVECTOR eye = XMLoadFloat3(&m_scene.camera.pos);
+    const XMVECTOR at = XMLoadFloat3(&m_scene.camera.gazePoint);
+    const XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    const XMMATRIX view = XMMatrixLookAtLH(eye, at, up);
     const XMMATRIX projection =
         XMMatrixPerspectiveFovLH(XMConvertToRadians(m_scene.camera.fov), aspect, kCameraNearZ, kCameraFarZ);
     const XMMATRIX viewProjection = XMMatrixMultiply(view, projection);
