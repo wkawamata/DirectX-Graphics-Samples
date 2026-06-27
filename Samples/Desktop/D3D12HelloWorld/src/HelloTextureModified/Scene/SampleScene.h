@@ -42,12 +42,12 @@ public:
     virtual float DefaultMeshScale() const = 0;
 };
 
-class GltfGridScene : public SampleScene
+class GltfGridBenchmarkScene : public SampleScene
 {
 public:
     static constexpr int kMaxInstanceCount = 1000;
 
-    explicit GltfGridScene(const GltfAssetDesc& assetDesc, int maxInstanceCount = kMaxInstanceCount);
+    explicit GltfGridBenchmarkScene(const GltfAssetDesc& assetDesc, int maxInstanceCount = kMaxInstanceCount);
 
     const char* Name() const override;
     bool Available() const override { return m_assetDesc.path != nullptr; }

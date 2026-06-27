@@ -430,7 +430,7 @@ void SampleApp::CreateSampleScenes()
     for (int i = 0; i < m_gltfSceneCount; i++)
     {
         m_sampleScenes.push_back(
-            std::make_unique<Engine::GltfGridScene>(gltfAssets[i], Engine::GltfGridScene::kMaxInstanceCount));
+            std::make_unique<Engine::GltfGridBenchmarkScene>(gltfAssets[i], Engine::GltfGridBenchmarkScene::kMaxInstanceCount));
     }
 
     m_sampleScenes.push_back(std::make_unique<Engine::MetallicRoughnessSphereScene>(

@@ -277,17 +277,17 @@ void AppendTransformedMesh(SceneMesh& dest, const SceneMesh& src, DirectX::FXMMA
 
 } // namespace
 
-GltfGridScene::GltfGridScene(const GltfAssetDesc& assetDesc, int maxInstanceCount)
+GltfGridBenchmarkScene::GltfGridBenchmarkScene(const GltfAssetDesc& assetDesc, int maxInstanceCount)
     : m_assetDesc(assetDesc), m_maxInstanceCount(maxInstanceCount), m_displayInstanceCount(maxInstanceCount)
 {
 }
 
-const char* GltfGridScene::Name() const
+const char* GltfGridBenchmarkScene::Name() const
 {
     return m_assetDesc.name;
 }
 
-void GltfGridScene::Load()
+void GltfGridBenchmarkScene::Load()
 {
     if (m_assetDesc.path != nullptr)
     {
@@ -304,7 +304,7 @@ void GltfGridScene::Load()
     Reset();
 }
 
-void GltfGridScene::Reset()
+void GltfGridBenchmarkScene::Reset()
 {
     m_scene.camera.pos = {0.0f, 0.0f, m_assetDesc.cameraDistance};
     m_scene.camera.rot = {0.0f, 0.0f, 0.0f};
@@ -313,7 +313,7 @@ void GltfGridScene::Reset()
     InitInstanceData();
 }
 
-void GltfGridScene::Update(float deltaTime, const SampleSceneUpdateContext& context)
+void GltfGridBenchmarkScene::Update(float deltaTime, const SampleSceneUpdateContext& context)
 {
     if (context.isPlaying)
     {
@@ -360,47 +360,47 @@ void GltfGridScene::Update(float deltaTime, const SampleSceneUpdateContext& cont
     }
 }
 
-Scene& GltfGridScene::GetScene()
+Scene& GltfGridBenchmarkScene::GetScene()
 {
     return m_scene;
 }
 
-const Scene& GltfGridScene::GetScene() const
+const Scene& GltfGridBenchmarkScene::GetScene() const
 {
     return m_scene;
 }
 
-SceneMesh& GltfGridScene::GetMesh()
+SceneMesh& GltfGridBenchmarkScene::GetMesh()
 {
     return m_mesh;
 }
 
-const SceneMesh& GltfGridScene::GetMesh() const
+const SceneMesh& GltfGridBenchmarkScene::GetMesh() const
 {
     return m_mesh;
 }
 
-int GltfGridScene::DisplayInstanceCount() const
+int GltfGridBenchmarkScene::DisplayInstanceCount() const
 {
     return m_displayInstanceCount;
 }
 
-int GltfGridScene::MaxDisplayInstanceCount() const
+int GltfGridBenchmarkScene::MaxDisplayInstanceCount() const
 {
     return m_maxInstanceCount;
 }
 
-void GltfGridScene::SetDisplayInstanceCount(int count)
+void GltfGridBenchmarkScene::SetDisplayInstanceCount(int count)
 {
     m_displayInstanceCount = std::clamp(count, 0, m_maxInstanceCount);
 }
 
-float GltfGridScene::DefaultMeshScale() const
+float GltfGridBenchmarkScene::DefaultMeshScale() const
 {
     return m_assetDesc.meshScale;
 }
 
-void GltfGridScene::InitInstanceData()
+void GltfGridBenchmarkScene::InitInstanceData()
 {
     m_scene.instances.resize(m_maxInstanceCount);
     m_instanceDataForCPU.clear();
@@ -421,7 +421,7 @@ void GltfGridScene::InitInstanceData()
     }
 }
 
-XMFLOAT3 GltfGridScene::InstanceIdToXYZ(int instanceId)
+XMFLOAT3 GltfGridBenchmarkScene::InstanceIdToXYZ(int instanceId)
 {
     constexpr int dimX = 10;
     constexpr int dimY = 10;
