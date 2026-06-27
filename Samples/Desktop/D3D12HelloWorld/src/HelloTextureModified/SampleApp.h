@@ -42,8 +42,8 @@ public:
 private:
     enum class CameraMode
     {
-        Free,
-        ObjectViewer,
+        FreeLook,
+        Arcball,
     };
 
     enum class AppMode
@@ -75,8 +75,8 @@ private:
     static constexpr float kObjectViewerPanSpeed = 0.008f;
     static constexpr float kObjectViewerPitchLimit = 1.4f;
     static constexpr int kObjectViewerOrbitPitchDeadZonePixels = 3;
-    static constexpr float kCameraMinZ = -100.0f;
-    static constexpr float kCameraMaxZ = 100.0f;
+    static constexpr float kCameraVerticalSpeed = 0.01f;
+    static constexpr float kCameraFovZoomSpeed = 2.0f;
     static constexpr UINT kImGuiDescriptorCount = 100;
 
     std::vector<std::unique_ptr<Engine::SampleScene>> m_sampleScenes;
@@ -107,13 +107,14 @@ private:
 
     bool m_isDragging = false;
     bool m_isMiddleDragging = false;
+    bool m_isRightDragging = false;
     int m_lastMouseX = 0;
     int m_lastMouseY = 0;
     XMFLOAT3 m_lastArcballVector = {0.0f, 0.0f, 1.0f};
     XMFLOAT4 m_dragRotation = {0.0f, 0.0f, 0.0f, 1.0f};
     XMFLOAT2 m_dragPan = {0.0f, 0.0f};
 
-    CameraMode m_cameraMode = CameraMode::Free;
+    CameraMode m_cameraMode = CameraMode::Arcball;
     float m_objectViewerYaw = 0.0f;
     float m_objectViewerPitch = 0.0f;
     float m_objectViewerDistance = 5.0f;

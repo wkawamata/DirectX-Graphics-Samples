@@ -196,33 +196,61 @@ void SampleApp::UpdateSampleState()
     {
         auto& camera = LoadedScene().GetScene().camera;
 
-        if (m_cameraMode == CameraMode::Free)
+        if (m_isRightDragging)
+        {
+            XMVECTOR localMove = XMVectorZero();
+
+            if (GetAsyncKeyState('A') & 0x8000)
+                localMove = XMVectorAdd(localMove, XMVectorSet(-kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
+            if (GetAsyncKeyState('D') & 0x8000)
+                localMove = XMVectorAdd(localMove, XMVectorSet(kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
+            if (GetAsyncKeyState('W') & 0x8000)
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, kCameraMoveSpeed, 0.0f));
+            if (GetAsyncKeyState('S') & 0x8000)
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, -kCameraMoveSpeed, 0.0f));
+            if (GetAsyncKeyState('E') & 0x8000)
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, kCameraVerticalSpeed, 0.0f, 0.0f));
+            if (GetAsyncKeyState('Q') & 0x8000)
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, -kCameraVerticalSpeed, 0.0f, 0.0f));
+            if (GetAsyncKeyState('Z') & 0x8000)
+                camera.fov = std::clamp(camera.fov - kCameraFovZoomSpeed, 20.0f, 150.0f);
+            if (GetAsyncKeyState('C') & 0x8000)
+                camera.fov = std::clamp(camera.fov + kCameraFovZoomSpeed, 20.0f, 150.0f);
+
+            const float sy = std::sin(camera.rot.y);
+            const float cy = std::cos(camera.rot.y);
+            const XMVECTOR forward = XMVectorSet(sy, 0.0f, cy, 0.0f);
+            const XMVECTOR right = XMVectorSet(cy, 0.0f, -sy, 0.0f);
+            const XMVECTOR worldMove = XMVectorAdd(
+                XMVectorAdd(
+                    XMVectorScale(forward, XMVectorGetZ(localMove)),
+                    XMVectorScale(right, XMVectorGetX(localMove))),
+                XMVectorSet(0.0f, XMVectorGetY(localMove), 0.0f, 0.0f));
+            XMFLOAT3 move = {};
+            XMStoreFloat3(&move, worldMove);
+            camera.pos.x += move.x;
+            camera.pos.y += move.y;
+            camera.pos.z += move.z;
+
+            const XMMATRIX camRot = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+            const XMVECTOR fwd = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), camRot);
+            XMStoreFloat3(&camera.gazePoint, XMLoadFloat3(&camera.pos) + fwd);
+        }
+        else if (m_cameraMode == CameraMode::FreeLook)
         {
             XMVECTOR localMove = XMVectorZero();
             if (GetAsyncKeyState('A') & 0x8000)
-            {
                 localMove = XMVectorAdd(localMove, XMVectorSet(-kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
-            }
             if (GetAsyncKeyState('D') & 0x8000)
-            {
                 localMove = XMVectorAdd(localMove, XMVectorSet(kCameraMoveSpeed, 0.0f, 0.0f, 0.0f));
-            }
-            if ((GetAsyncKeyState('W') & 0x8000) && (GetAsyncKeyState(VK_CONTROL) & 0x8000))
-            {
-                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, -kCameraMoveSpeed, 0.0f, 0.0f));
-            }
-            if ((GetAsyncKeyState('S') & 0x8000) && (GetAsyncKeyState(VK_CONTROL) & 0x8000))
-            {
-                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, kCameraMoveSpeed, 0.0f, 0.0f));
-            }
-            if ((GetAsyncKeyState('W') & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000))
-            {
+            if ((GetAsyncKeyState('W') & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000))
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, kCameraVerticalSpeed, 0.0f, 0.0f));
+            if ((GetAsyncKeyState('S') & 0x8000) && (GetAsyncKeyState(VK_SHIFT) & 0x8000))
+                localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, -kCameraVerticalSpeed, 0.0f, 0.0f));
+            if ((GetAsyncKeyState('W') & 0x8000) && !(GetAsyncKeyState(VK_SHIFT) & 0x8000))
                 localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, kCameraMoveSpeed, 0.0f));
-            }
-            if ((GetAsyncKeyState('S') & 0x8000) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000))
-            {
+            if ((GetAsyncKeyState('S') & 0x8000) && !(GetAsyncKeyState(VK_SHIFT) & 0x8000))
                 localMove = XMVectorAdd(localMove, XMVectorSet(0.0f, 0.0f, -kCameraMoveSpeed, 0.0f));
-            }
 
             const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
             const XMVECTOR worldMove = XMVector3TransformNormal(localMove, cameraRotation);
@@ -230,11 +258,11 @@ void SampleApp::UpdateSampleState()
             XMStoreFloat3(&move, worldMove);
             camera.pos.x += move.x;
             camera.pos.y += move.y;
-            camera.pos.z = std::clamp(camera.pos.z + move.z, kCameraMinZ, kCameraMaxZ);
+            camera.pos.z += move.z;
 
             const XMMATRIX camRot = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
-            const XMVECTOR forward = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), camRot);
-            XMStoreFloat3(&camera.gazePoint, XMLoadFloat3(&camera.pos) + forward);
+            const XMVECTOR fwd = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), camRot);
+            XMStoreFloat3(&camera.gazePoint, XMLoadFloat3(&camera.pos) + fwd);
         }
         else
         {
@@ -270,6 +298,15 @@ void SampleApp::OnKeyDown(UINT8 key)
     {
         m_isPlaying = !m_isPlaying;
     }
+
+    if (m_appMode == AppMode::Running && key == VK_TAB)
+    {
+        m_cameraMode = (m_cameraMode == CameraMode::Arcball) ? CameraMode::FreeLook : CameraMode::Arcball;
+        if (m_cameraMode == CameraMode::Arcball)
+        {
+            InitObjectViewerFromCamera();
+        }
+    }
 }
 
 void SampleApp::OnKeyUp(UINT8 key) {}
@@ -294,6 +331,12 @@ void SampleApp::OnMouseDown(UINT8 button, int x, int y)
         m_lastMouseX = x;
         m_lastMouseY = y;
     }
+    else if (button == VK_RBUTTON)
+    {
+        m_isRightDragging = true;
+        m_lastMouseX = x;
+        m_lastMouseY = y;
+    }
 }
 
 void SampleApp::OnMouseUp(UINT8 button, int x, int y)
@@ -306,6 +349,14 @@ void SampleApp::OnMouseUp(UINT8 button, int x, int y)
     {
         m_isMiddleDragging = false;
     }
+    else if (button == VK_RBUTTON)
+    {
+        m_isRightDragging = false;
+        if (m_cameraMode == CameraMode::Arcball)
+        {
+            InitObjectViewerFromCamera();
+        }
+    }
 }
 
 void SampleApp::OnMouseMove(int x, int y)
@@ -315,17 +366,41 @@ void SampleApp::OnMouseMove(int x, int y)
         return;
     }
 
-    if (m_cameraMode == CameraMode::Free)
+    auto& camera = LoadedScene().GetScene().camera;
+
+    if (m_isRightDragging)
+    {
+        const int dx = x - m_lastMouseX;
+        const int dy = y - m_lastMouseY;
+        m_lastMouseX = x;
+        m_lastMouseY = y;
+
+        camera.rot.x = std::clamp(camera.rot.x + static_cast<float>(dy) * kMouseCameraRotationSpeed,
+                                  -kCameraPitchLimit, kCameraPitchLimit);
+        camera.rot.y += static_cast<float>(dx) * kMouseCameraRotationSpeed;
+
+        const XMMATRIX camRot = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+        const XMVECTOR fwd = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), camRot);
+        XMStoreFloat3(&camera.gazePoint, XMLoadFloat3(&camera.pos) + fwd);
+        return;
+    }
+
+    if (m_cameraMode == CameraMode::FreeLook)
     {
         if (m_isDragging)
         {
+            const int dx = x - m_lastMouseX;
+            const int dy = y - m_lastMouseY;
             m_lastMouseX = x;
             m_lastMouseY = y;
-            const XMFLOAT3 currentArcballVector = ProjectToArcball(x, y, GetWidth(), GetHeight());
-            const XMFLOAT4 deltaRotation = ArcballDeltaQuaternion(currentArcballVector, m_lastArcballVector);
-            m_lastArcballVector = currentArcballVector;
-            const XMVECTOR rotation = XMQuaternionMultiply(XMLoadFloat4(&m_dragRotation), XMLoadFloat4(&deltaRotation));
-            XMStoreFloat4(&m_dragRotation, XMQuaternionNormalize(rotation));
+
+            camera.rot.x = std::clamp(camera.rot.x + static_cast<float>(dy) * kMouseCameraRotationSpeed,
+                                      -kCameraPitchLimit, kCameraPitchLimit);
+            camera.rot.y += static_cast<float>(dx) * kMouseCameraRotationSpeed;
+
+            const XMMATRIX camRot = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
+            const XMVECTOR fwd = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), camRot);
+            XMStoreFloat3(&camera.gazePoint, XMLoadFloat3(&camera.pos) + fwd);
         }
         else if (m_isMiddleDragging)
         {
@@ -333,15 +408,6 @@ void SampleApp::OnMouseMove(int x, int y)
             const int dy = y - m_lastMouseY;
             m_lastMouseX = x;
             m_lastMouseY = y;
-
-            auto& camera = LoadedScene().GetScene().camera;
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-            {
-                camera.rot.x = std::clamp(camera.rot.x + static_cast<float>(dy) * kMouseCameraRotationSpeed,
-                                          -kCameraPitchLimit, kCameraPitchLimit);
-                camera.rot.y += static_cast<float>(dx) * kMouseCameraRotationSpeed;
-                return;
-            }
 
             const XMVECTOR localPan = XMVectorSet(static_cast<float>(dx) * kMousePanSpeed,
                                                   -static_cast<float>(dy) * kMousePanSpeed, 0.0f, 0.0f);
@@ -367,7 +433,6 @@ void SampleApp::OnMouseMove(int x, int y)
                 dy = 0;
             }
 
-            auto& camera = LoadedScene().GetScene().camera;
             const XMVECTOR pivot = XMLoadFloat3(&m_objectViewerPivot);
             XMVECTOR offset = XMLoadFloat3(&camera.pos) - pivot;
             if (dx != 0)
@@ -395,7 +460,6 @@ void SampleApp::OnMouseMove(int x, int y)
             m_lastMouseX = x;
             m_lastMouseY = y;
 
-            const auto& camera = LoadedScene().GetScene().camera;
             const XMVECTOR localPan = XMVectorSet(static_cast<float>(dx) * kObjectViewerPanSpeed,
                                                   -static_cast<float>(dy) * kObjectViewerPanSpeed, 0.0f, 0.0f);
             const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
@@ -425,7 +489,7 @@ void SampleApp::OnMouseWheel(int wheelDelta)
         return;
     }
 
-    if (m_cameraMode == CameraMode::Free)
+    if (m_cameraMode == CameraMode::FreeLook)
     {
         const XMVECTOR localMove = XMVectorSet(0.0f, 0.0f, wheelSteps * kMouseWheelCameraSpeed, 0.0f);
         const XMMATRIX cameraRotation = XMMatrixRotationRollPitchYaw(camera.rot.x, camera.rot.y, camera.rot.z);
@@ -434,7 +498,7 @@ void SampleApp::OnMouseWheel(int wheelDelta)
         XMStoreFloat3(&move, worldMove);
         camera.pos.x += move.x;
         camera.pos.y += move.y;
-        camera.pos.z = std::clamp(camera.pos.z + move.z, kCameraMinZ, kCameraMaxZ);
+        camera.pos.z += move.z;
     }
     else
     {
@@ -543,10 +607,25 @@ void SampleApp::LoadSceneCpuData(int sceneIndex)
     m_objectViewerPivot = {0.0f, 0.0f, 0.0f};
     m_sceneResourcesLoaded = false;
 
-    m_cameraMode = IsGltfViewerSceneIndex(m_loadedSceneIndex) ? CameraMode::ObjectViewer : CameraMode::Free;
-    if (m_cameraMode == CameraMode::ObjectViewer)
+    m_cameraMode = IsGltfViewerSceneIndex(m_loadedSceneIndex) ? CameraMode::Arcball : CameraMode::FreeLook;
+    if (strstr(m_loadedScene->Name(), "Sponza") != nullptr)
+    {
+        m_cameraMode = CameraMode::FreeLook;
+    }
+    if (m_cameraMode == CameraMode::Arcball)
     {
         InitObjectViewerFromCamera();
+    }
+    else
+    {
+        auto& camera = LoadedScene().GetScene().camera;
+        const XMVECTOR camPos = XMLoadFloat3(&camera.pos);
+        const XMVECTOR dir = XMVector3Normalize(XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f) - camPos);
+        XMFLOAT3 dirF;
+        XMStoreFloat3(&dirF, dir);
+        camera.rot.x = std::asin(std::clamp(dirF.y, -1.0f, 1.0f));
+        camera.rot.y = std::atan2(dirF.x, dirF.z);
+        camera.gazePoint = {0.0f, 0.0f, 0.0f};
     }
 }
 
@@ -761,22 +840,25 @@ void SampleApp::DrawDebugUi(const HelloTextureEngine::UiFrameContext& context)
         ImGui::End();
         return;
     }
+    if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGuiWidgets::SliderFloatWithControls("FovH", &loadedScene.GetScene().camera.fov, 20.f, 150.f, 5.f, 60.f);
+        int cameraMode = static_cast<int>(m_cameraMode);
+        if (ImGui::Combo("Mode", &cameraMode, "FreeLook\0Arcball\0"))
+        {
+            m_cameraMode = static_cast<CameraMode>(cameraMode);
+            if (m_cameraMode == CameraMode::Arcball)
+            {
+                InitObjectViewerFromCamera();
+            }
+        }
+    }
     if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGuiWidgets::SliderIntWithControls("Display Instance Count", &m_displayInstanceCount, 0,
                                              loadedScene.MaxDisplayInstanceCount(), 1, 0);
         loadedScene.SetDisplayInstanceCount(m_displayInstanceCount);
         ImGuiWidgets::SliderFloatWithControls("Mesh Scale", &m_meshScale, 0.1f, 2.0f, 0.05f, 0.5f);
-        ImGuiWidgets::SliderFloatWithControls("Camera FovH", &loadedScene.GetScene().camera.fov, 20.f, 150.f, 5.f, 60.f);
-        int cameraMode = static_cast<int>(m_cameraMode);
-        if (ImGui::Combo("Camera Mode", &cameraMode, "Free\0ObjectViewer\0"))
-        {
-            m_cameraMode = static_cast<CameraMode>(cameraMode);
-            if (m_cameraMode == CameraMode::ObjectViewer)
-            {
-                InitObjectViewerFromCamera();
-            }
-        }
         ImGui::ColorEdit4("Background Color", m_backBufferClearColor.data());
     }
     if (ImGui::CollapsingHeader("PBR Lighting", ImGuiTreeNodeFlags_DefaultOpen))
@@ -980,13 +1062,13 @@ void SampleApp::DrawDebugUi(const HelloTextureEngine::UiFrameContext& context)
         changed |= ImGui::Checkbox("Soft Shadow Enable", &shadowSettings.softShadowEnabled);
 
         changed |= ImGuiWidgets::SliderIntWithControls(
-            "Sample Count", &shadowSettings.sampleCount, 1, 16, 1, 1);
+            "Sample Count", &shadowSettings.sampleCount, 1, 16, 1, 8);
 
         changed |= ImGuiWidgets::SliderFloatWithControls(
-            "Light Angular Radius", &shadowSettings.lightAngularRadius, 0.0f, 0.1f, 0.001f, 0.005f, "%.4f");
+            "Light Angular Radius", &shadowSettings.lightAngularRadius, 0.0f, 0.1f, 0.001f, 0.1f, "%.4f");
 
         changed |= ImGuiWidgets::SliderFloatWithControls(
-            "Jitter Strength", &shadowSettings.jitterStrength, 0.0f, 2.0f, 0.1f, 1.0f);
+            "Jitter Strength", &shadowSettings.jitterStrength, 0.0f, 2.0f, 0.1f, 2.0f);
 
         if (changed)
         {

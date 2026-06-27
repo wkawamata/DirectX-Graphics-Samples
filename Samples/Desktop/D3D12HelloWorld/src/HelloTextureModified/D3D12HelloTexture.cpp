@@ -385,6 +385,7 @@ void HelloTextureEngine::ReloadEnvironmentResources(const Engine::ProceduralEnvi
 
 void HelloTextureEngine::UpdateCameraConstantBuffer()
 {
+    m_scene.camera.fov = std::clamp(m_scene.camera.fov, 0.1f, 179.0f);
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     const XMVECTOR eye = XMLoadFloat3(&m_scene.camera.pos);
     const XMVECTOR at = XMLoadFloat3(&m_scene.camera.gazePoint);
