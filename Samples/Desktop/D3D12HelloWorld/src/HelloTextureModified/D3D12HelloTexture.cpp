@@ -2524,6 +2524,10 @@ void HelloTextureEngine::ExecuteRayQueryShadowPass(const RenderPass& pass)
     passDesc.rayTMin = m_shadowSettings.rayTMin;
     passDesc.rayTMax = m_shadowSettings.rayTMax;
     passDesc.enabled = m_shadowSettings.enabled ? 1 : 0;
+    passDesc.softShadowEnabled = m_shadowSettings.softShadowEnabled ? 1 : 0;
+    passDesc.sampleCount = static_cast<uint32_t>(m_shadowSettings.sampleCount);
+    passDesc.lightAngularRadius = m_shadowSettings.lightAngularRadius;
+    passDesc.jitterStrength = m_shadowSettings.jitterStrength;
     passDesc.width = m_width;
     passDesc.height = m_height;
 
