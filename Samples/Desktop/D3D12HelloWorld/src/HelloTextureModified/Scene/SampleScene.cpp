@@ -493,6 +493,93 @@ XMFLOAT3 GltfGridBenchmarkScene::InstanceIdToXYZ(int instanceId)
     };
 }
 
+GltfObjectViewerScene::GltfObjectViewerScene(const GltfAssetDesc& assetDesc)
+    : m_assetDesc(assetDesc)
+{
+}
+
+const char* GltfObjectViewerScene::Name() const
+{
+    return m_assetDesc.name;
+}
+
+void GltfObjectViewerScene::Load()
+{
+    if (m_assetDesc.path != nullptr)
+    {
+        GltfMeshData gltfMesh;
+        const bool loaded = LoadGltfMesh(m_assetDesc.path, gltfMesh);
+        assert(loaded);
+        if (loaded)
+        {
+            m_mesh = ConvertToSceneMesh(gltfMesh);
+        }
+    }
+    assert(!m_mesh.vertices.empty());
+    m_scene.mesh = &m_mesh;
+    Reset();
+}
+
+void GltfObjectViewerScene::Reset()
+{
+    m_scene.camera.pos = {0.0f, 0.0f, m_assetDesc.cameraDistance};
+    m_scene.camera.rot = {0.0f, 0.0f, 0.0f};
+    m_scene.camera.fov = 60.0f;
+
+    m_scene.instances.resize(1);
+    const float scale = m_assetDesc.meshScale;
+    const XMMATRIX transform = XMMatrixScaling(scale, scale, scale);
+    XMStoreFloat4x4(&m_scene.instances[0].world, XMMatrixTranspose(transform));
+    m_scene.instances[0].prevWorld = m_scene.instances[0].world;
+    m_scene.instances[0].materialId = 0;
+}
+
+void GltfObjectViewerScene::Update(float deltaTime, const SampleSceneUpdateContext& context)
+{
+    UNREFERENCED_PARAMETER(deltaTime);
+    UNREFERENCED_PARAMETER(context);
+}
+
+Scene& GltfObjectViewerScene::GetScene()
+{
+    return m_scene;
+}
+
+const Scene& GltfObjectViewerScene::GetScene() const
+{
+    return m_scene;
+}
+
+SceneMesh& GltfObjectViewerScene::GetMesh()
+{
+    return m_mesh;
+}
+
+const SceneMesh& GltfObjectViewerScene::GetMesh() const
+{
+    return m_mesh;
+}
+
+int GltfObjectViewerScene::DisplayInstanceCount() const
+{
+    return 1;
+}
+
+int GltfObjectViewerScene::MaxDisplayInstanceCount() const
+{
+    return kMaxInstanceCount;
+}
+
+void GltfObjectViewerScene::SetDisplayInstanceCount(int count)
+{
+    UNREFERENCED_PARAMETER(count);
+}
+
+float GltfObjectViewerScene::DefaultMeshScale() const
+{
+    return m_assetDesc.meshScale;
+}
+
 MetallicRoughnessSphereScene::MetallicRoughnessSphereScene(int maxInstanceCount)
     : m_maxInstanceCount(maxInstanceCount), m_displayInstanceCount(kSphereRows * kSphereColumns)
 {

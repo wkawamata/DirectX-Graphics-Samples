@@ -83,6 +83,33 @@ private:
     std::vector<InstanceDataForCPU> m_instanceDataForCPU;
 };
 
+class GltfObjectViewerScene : public SampleScene
+{
+public:
+    static constexpr int kMaxInstanceCount = 1;
+
+    explicit GltfObjectViewerScene(const GltfAssetDesc& assetDesc);
+
+    const char* Name() const override;
+    bool Available() const override { return m_assetDesc.path != nullptr; }
+    void Load() override;
+    void Reset() override;
+    void Update(float deltaTime, const SampleSceneUpdateContext& context) override;
+    Scene& GetScene() override;
+    const Scene& GetScene() const override;
+    SceneMesh& GetMesh() override;
+    const SceneMesh& GetMesh() const override;
+    int DisplayInstanceCount() const override;
+    int MaxDisplayInstanceCount() const override;
+    void SetDisplayInstanceCount(int count) override;
+    float DefaultMeshScale() const override;
+
+private:
+    GltfAssetDesc m_assetDesc = {};
+    Scene m_scene;
+    SceneMesh m_mesh;
+};
+
 class MetallicRoughnessSphereScene : public SampleScene
 {
 public:

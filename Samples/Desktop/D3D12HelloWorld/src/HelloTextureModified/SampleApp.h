@@ -70,6 +70,7 @@ private:
     static constexpr UINT kImGuiDescriptorCount = 100;
 
     std::vector<std::unique_ptr<Engine::SampleScene>> m_sampleScenes;
+    int m_gltfViewerCount = 0;
     int m_gltfSceneCount = 0;
     Engine::SampleScene* m_loadedScene = nullptr;
     int m_loadedSceneIndex = -1;

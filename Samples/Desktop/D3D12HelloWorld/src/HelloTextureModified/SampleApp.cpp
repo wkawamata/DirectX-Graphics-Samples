@@ -425,8 +425,15 @@ void SampleApp::CreateSampleScenes()
         {"BoxTextured", nullptr, -10.0f, 0.5f},
         {"CesiumMan", nullptr, -10.0f, 0.5f},
     };
-    m_gltfSceneCount = ARRAYSIZE(gltfAssets);
+    const int gltfAssetCount = ARRAYSIZE(gltfAssets);
 
+    m_gltfViewerCount = gltfAssetCount;
+    for (int i = 0; i < m_gltfViewerCount; i++)
+    {
+        m_sampleScenes.push_back(std::make_unique<Engine::GltfObjectViewerScene>(gltfAssets[i]));
+    }
+
+    m_gltfSceneCount = gltfAssetCount;
     for (int i = 0; i < m_gltfSceneCount; i++)
     {
         m_sampleScenes.push_back(
@@ -532,17 +539,33 @@ void SampleApp::DrawSceneSelectUi()
     ImGui::Begin("Scene Select");
 
     const int sceneCount = static_cast<int>(m_sampleScenes.size());
-    const int demoSceneStart = m_gltfSceneCount;
+    const int benchmarkStart = m_gltfViewerCount;
+    const int demoSceneStart = m_gltfViewerCount + m_gltfSceneCount;
 
-    ImGui::Text("glTF Assets");
+    ImGui::Text("glTF Viewer");
     ImGui::Separator();
-    for (int i = 0; i < m_gltfSceneCount; i++)
+    ImGui::PushID("gltf-viewer");
+    for (int i = 0; i < m_gltfViewerCount; i++)
     {
         const bool available = m_sampleScenes[static_cast<size_t>(i)]->Available();
         ImGui::BeginDisabled(!available);
         ImGui::RadioButton(m_sampleScenes[static_cast<size_t>(i)]->Name(), &m_selectedSceneIndex, i);
         ImGui::EndDisabled();
     }
+    ImGui::PopID();
+
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+    ImGui::Text("glTF Grid Benchmark");
+    ImGui::Separator();
+    ImGui::PushID("gltf-grid-benchmark");
+    for (int i = benchmarkStart; i < benchmarkStart + m_gltfSceneCount; i++)
+    {
+        const bool available = m_sampleScenes[static_cast<size_t>(i)]->Available();
+        ImGui::BeginDisabled(!available);
+        ImGui::RadioButton(m_sampleScenes[static_cast<size_t>(i)]->Name(), &m_selectedSceneIndex, i);
+        ImGui::EndDisabled();
+    }
+    ImGui::PopID();
 
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
     ImGui::Text("Demo Scenes");
