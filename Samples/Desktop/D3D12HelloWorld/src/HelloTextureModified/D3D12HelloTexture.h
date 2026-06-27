@@ -106,7 +106,7 @@ public:
 
     struct LightingParams
     {
-        XMFLOAT3 lightDirection = {0.4f, 0.7f, 0.6f};
+        XMFLOAT3 lightDirection = {0.0f, 1.0f, -1.0f};
         XMFLOAT3 lightColor = {1.0f, 1.0f, 1.0f};
         // HDR environment maps are bright, so the default IBL contribution is intentionally modest.
         float iblIntensity = 0.10f;
@@ -344,7 +344,7 @@ private:
 
     struct alignas(256) LightingConstants
     {
-        XMFLOAT3 lightDirection = {0.4f, 0.7f, 0.6f};
+        XMFLOAT3 lightDirection = {0.0f, 1.0f, -1.0f};
         float iblIntensity = 0.10f;
         XMFLOAT3 lightColor = {1.0f, 1.0f, 1.0f};
         float diffuseIntensity = 1.0f;

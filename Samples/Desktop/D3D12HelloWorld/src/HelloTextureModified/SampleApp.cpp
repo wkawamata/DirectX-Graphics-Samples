@@ -493,8 +493,8 @@ void SampleApp::CreateSampleScenes()
         {"DamagedHelmet", "Assets\\Models\\DamagedHelmet\\glTF\\DamagedHelmet.gltf", -10.0f, 0.5f},
         {"Avocado", "Assets\\Models\\Avocado\\glTF\\Avocado.gltf", -10.0f, 0.35f},
         {"BoomBox", "Assets\\Models\\BoomBox\\glTF\\BoomBox.gltf", -6.0f, 1.0f},
-        {"Lantern", nullptr, -10.0f, 0.5f},
-        {"Sponza", nullptr, -10.0f, 0.5f},
+        {"Lantern", "Assets\\Models\\Lantern\\glTF\\Lantern.gltf", -10.0f, 0.5f},
+        {"Sponza", "Assets\\Models\\Sponza\\glTF\\Sponza.gltf", -10.0f, 0.01f},
         {"FlightHelmet", nullptr, -10.0f, 0.5f},
         {"Suzanne", nullptr, -10.0f, 0.5f},
         {"BoxTextured", nullptr, -10.0f, 0.5f},
@@ -782,7 +782,7 @@ void SampleApp::DrawDebugUi(const HelloTextureEngine::UiFrameContext& context)
     if (ImGui::CollapsingHeader("PBR Lighting", ImGuiTreeNodeFlags_DefaultOpen))
     {
         {
-            static constexpr float defaultDir[] = {0.4f, 0.7f, 0.6f};
+            static constexpr float defaultDir[] = {0.0f, 1.0f, -1.0f};
             ImGuiWidgets::SliderFloat3WithControls("Light Direction", &m_lightingParams.lightDirection.x, -1.0f, 1.0f,
                                                     0.05f, defaultDir);
         }
