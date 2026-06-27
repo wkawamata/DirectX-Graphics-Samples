@@ -47,14 +47,6 @@ static constexpr int kSphereColumns = 7;
 static constexpr int kSphereStackCount = 16;
 static constexpr int kSphereSliceCount = 32;
 
-GltfMeshData LoadDamagedHelmet()
-{
-    GltfMeshData mesh;
-    const bool loaded = LoadGltfMesh("Assets\\Models\\DamagedHelmet\\glTF\\DamagedHelmet.gltf", mesh);
-    assert(loaded);
-    return mesh;
-}
-
 SceneMesh ConvertToSceneMesh(const GltfMeshData& mesh)
 {
     SceneMesh sceneMesh = {};
@@ -285,19 +277,28 @@ void AppendTransformedMesh(SceneMesh& dest, const SceneMesh& src, DirectX::FXMMA
 
 } // namespace
 
-GltfGridScene::GltfGridScene(int maxInstanceCount)
-    : m_maxInstanceCount(maxInstanceCount), m_displayInstanceCount(maxInstanceCount)
+GltfGridScene::GltfGridScene(const GltfAssetDesc& assetDesc, int maxInstanceCount)
+    : m_assetDesc(assetDesc), m_maxInstanceCount(maxInstanceCount), m_displayInstanceCount(maxInstanceCount)
 {
 }
 
 const char* GltfGridScene::Name() const
 {
-    return "glTF Grid";
+    return m_assetDesc.name;
 }
 
 void GltfGridScene::Load()
 {
-    m_mesh = ConvertToSceneMesh(LoadDamagedHelmet());
+    if (m_assetDesc.path != nullptr)
+    {
+        GltfMeshData gltfMesh;
+        const bool loaded = LoadGltfMesh(m_assetDesc.path, gltfMesh);
+        assert(loaded);
+        if (loaded)
+        {
+            m_mesh = ConvertToSceneMesh(gltfMesh);
+        }
+    }
     assert(!m_mesh.vertices.empty());
     m_scene.mesh = &m_mesh;
     Reset();
@@ -305,7 +306,7 @@ void GltfGridScene::Load()
 
 void GltfGridScene::Reset()
 {
-    m_scene.camera.pos = {0.0f, 0.0f, -10.0f};
+    m_scene.camera.pos = {0.0f, 0.0f, m_assetDesc.cameraDistance};
     m_scene.camera.rot = {0.0f, 0.0f, 0.0f};
     m_scene.camera.fov = 60.0f;
     m_accumTime = 0.0f;
@@ -396,7 +397,7 @@ void GltfGridScene::SetDisplayInstanceCount(int count)
 
 float GltfGridScene::DefaultMeshScale() const
 {
-    return 0.5f;
+    return m_assetDesc.meshScale;
 }
 
 void GltfGridScene::InitInstanceData()

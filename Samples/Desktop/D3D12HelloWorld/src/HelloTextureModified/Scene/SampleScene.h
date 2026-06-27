@@ -14,12 +14,21 @@ struct SampleSceneUpdateContext
     DirectX::XMFLOAT4 dragRotation = {0.0f, 0.0f, 0.0f, 1.0f};
 };
 
+struct GltfAssetDesc
+{
+    const char* name;
+    const char* path;       // nullptr if asset is not available
+    float cameraDistance;   // negative = behind camera along -Z
+    float meshScale;
+};
+
 class SampleScene
 {
 public:
     virtual ~SampleScene() = default;
 
     virtual const char* Name() const = 0;
+    virtual bool Available() const { return true; }
     virtual void Load() = 0;
     virtual void Reset() = 0;
     virtual void Update(float deltaTime, const SampleSceneUpdateContext& context) = 0;
@@ -38,9 +47,10 @@ class GltfGridScene : public SampleScene
 public:
     static constexpr int kMaxInstanceCount = 1000;
 
-    explicit GltfGridScene(int maxInstanceCount = kMaxInstanceCount);
+    explicit GltfGridScene(const GltfAssetDesc& assetDesc, int maxInstanceCount = kMaxInstanceCount);
 
     const char* Name() const override;
+    bool Available() const override { return m_assetDesc.path != nullptr; }
     void Load() override;
     void Reset() override;
     void Update(float deltaTime, const SampleSceneUpdateContext& context) override;
@@ -64,6 +74,7 @@ private:
 
     void InitInstanceData();
 
+    GltfAssetDesc m_assetDesc = {};
     int m_maxInstanceCount = 0;
     int m_displayInstanceCount = 0;
     float m_accumTime = 0.0f;

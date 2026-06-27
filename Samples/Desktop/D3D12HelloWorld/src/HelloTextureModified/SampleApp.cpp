@@ -413,7 +413,26 @@ void SampleApp::OnDestroy()
 void SampleApp::CreateSampleScenes()
 {
     m_sampleScenes.clear();
-    m_sampleScenes.push_back(std::make_unique<Engine::GltfGridScene>(Engine::GltfGridScene::kMaxInstanceCount));
+
+    static const Engine::GltfAssetDesc gltfAssets[] = {
+        {"DamagedHelmet", "Assets\\Models\\DamagedHelmet\\glTF\\DamagedHelmet.gltf", -10.0f, 0.5f},
+        {"Avocado", nullptr, -10.0f, 0.5f},
+        {"BoomBox", nullptr, -10.0f, 0.5f},
+        {"Lantern", nullptr, -10.0f, 0.5f},
+        {"Sponza", nullptr, -10.0f, 0.5f},
+        {"FlightHelmet", nullptr, -10.0f, 0.5f},
+        {"Suzanne", nullptr, -10.0f, 0.5f},
+        {"BoxTextured", nullptr, -10.0f, 0.5f},
+        {"CesiumMan", nullptr, -10.0f, 0.5f},
+    };
+    m_gltfSceneCount = ARRAYSIZE(gltfAssets);
+
+    for (int i = 0; i < m_gltfSceneCount; i++)
+    {
+        m_sampleScenes.push_back(
+            std::make_unique<Engine::GltfGridScene>(gltfAssets[i], Engine::GltfGridScene::kMaxInstanceCount));
+    }
+
     m_sampleScenes.push_back(std::make_unique<Engine::MetallicRoughnessSphereScene>(
         Engine::MetallicRoughnessSphereScene::kMaxInstanceCount));
     m_sampleScenes.push_back(std::make_unique<Engine::ShadowTestGroundCubesScene>(
@@ -509,14 +528,31 @@ const Engine::SampleScene& SampleApp::LoadedScene() const
 
 void SampleApp::DrawSceneSelectUi()
 {
-    ImGui::SetNextWindowSize(ImVec2(360, 180), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(360, 360), ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Select");
 
-    for (int i = 0; i < static_cast<int>(m_sampleScenes.size()); i++)
+    const int sceneCount = static_cast<int>(m_sampleScenes.size());
+    const int demoSceneStart = m_gltfSceneCount;
+
+    ImGui::Text("glTF Assets");
+    ImGui::Separator();
+    for (int i = 0; i < m_gltfSceneCount; i++)
+    {
+        const bool available = m_sampleScenes[static_cast<size_t>(i)]->Available();
+        ImGui::BeginDisabled(!available);
+        ImGui::RadioButton(m_sampleScenes[static_cast<size_t>(i)]->Name(), &m_selectedSceneIndex, i);
+        ImGui::EndDisabled();
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+    ImGui::Text("Demo Scenes");
+    ImGui::Separator();
+    for (int i = demoSceneStart; i < sceneCount; i++)
     {
         ImGui::RadioButton(m_sampleScenes[static_cast<size_t>(i)]->Name(), &m_selectedSceneIndex, i);
     }
 
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
     if (ImGui::Button("Load Scene"))
     {
         OpenSelectedScene();
